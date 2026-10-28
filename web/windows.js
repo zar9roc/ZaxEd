@@ -96,7 +96,7 @@ async function openMapAt(mapName, objectName) {
   const path = mapName.startsWith('Levels/') ? mapName : await resolveMap(mapName);
   if (!path) { alert(`Map not found: ${mapName}`); return; }
   if (path === state.path) {
-    const ids = objectName ? state.byName.get(objectName) : null;
+    const ids = objectName ? state.byName.get(objectName.toLowerCase()) : null;
     if (ids && ids.length) select(ids[0], true);
     return;
   }
@@ -169,10 +169,12 @@ function renderEvents(box, o) {
     });
 }
 
-// Objects in this map and events in other maps that refer to o.
+// Objects in this map and events in other maps that refer to o, then events
+// anywhere in the game that use the item it gives or create its model.
 function renderIncoming(box, o) {
-  const local = (o.name && state.incoming.get(o.name)) || [];
-  const remote = (state.crossrefs || []).filter((r) => r.location && r.location === o.name);
+  const name = o.name.toLowerCase();
+  const local = (name && state.incoming.get(name)) || [];
+  const remote = (state.crossrefs || []).filter((r) => r.location && r.location.toLowerCase() === name);
   if (local.length) {
     box.append(el('div', 'caption', 'Referenced by'));
     for (const i of local) {
@@ -197,6 +199,49 @@ function renderIncoming(box, o) {
       box.append(line);
     }
   }
+  renderItemUsers(box, o);
+}
+
+// Events in any map that check / give / use the inventory item o gives (a
+// weapon part: only events for its segment or the whole definition), or that
+// create o's model. Searched by the server's game-wide index.
+function renderItemUsers(box, o) {
+  if (!o.item && !o.model) return;
+  const segment = o.item && o.item.segments.length ? o.item.segments[0] : '';
+  const query = new URLSearchParams({ def: o.item ? o.item.def : '', segment, model: o.model }).toString();
+  if (!state.itemrefs.has(query)) state.itemrefs.set(query, api('/api/itemrefs?' + query));
+  const what = o.item ? `'${o.item.def}'` + (segment ? ` (${segment.split('/').pop()})` : '') : `'${o.model.split('/').pop()}'`;
+  const section = el('div');
+  box.append(section);
+  const caption = el('div', 'caption', `Uses of ${o.item ? 'item' : 'model'} ${what}`);
+  caption.title = o.item ? 'Events in any map that check for, give, use or create this item' : 'Events in any map that create this model';
+  section.append(caption, el('div', 'dim', 'Searching all maps...'));
+  if (!o.item) section.hidden = true;
+  state.itemrefs.get(query).then((refs) => {
+    section.lastChild.remove();
+    section.hidden = false;
+    if (!refs.length) {
+      if (o.item) section.append(el('div', 'dim', 'No events use it.'));
+      else section.remove();            // plain scenery: only worth a line when something creates it
+      return;
+    }
+    const shown = refs.slice(0, 200);
+    for (const r of shown) {
+      const here = r.from === state.path;
+      const line = el('div', 'evline');
+      const a = el('a', here ? '' : 'maplink',
+        (here ? '' : r.from.replace(/^Levels\//, '').replace(/\.zax$/i, '') + ' \u25B8 ') + r.title);
+      a.href = '#';
+      a.title = here ? 'Select the object' : 'Open that map and select the object';
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        if (r.from === state.path) select(r.id, true); else openLevel(r.from, { selectId: r.id });
+      });
+      line.append(a, document.createTextNode(': ' + r.label));
+      section.append(line);
+    }
+    if (refs.length > shown.length) section.append(el('div', 'dim', `...and ${refs.length - shown.length} more.`));
+  }, (e) => { section.lastChild.textContent = e.message; });
 }
 
 // ---------------------------------------------------------------- properties window

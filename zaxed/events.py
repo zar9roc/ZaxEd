@@ -18,9 +18,12 @@ event_tree() turns an object's activities into nested
      "map": {"name", "location"}       actions that go to another map
      "dialog": {"script", "line"}      CZaxDialogAction
      "remote": [{"map", "name"}]       names in another map (see below)
+     "items": [{"def", "segments"}]    inventory items it checks/gives/uses
+     "models": [model...]              models it creates or spawns
      "children": [...]}
 References are found from the data: any value inside an event that equals the
-name of an object in the level. Inside COtherMapAction (Other Map Name), the
+name of an object in the level, ignoring case as the game does ('mega 6'
+deletes the object named 'Mega 6'). Inside COtherMapAction (Other Map Name), the
 nested actions run in that other map, so their names (REMOTE_KEYS) refer to
 objects there and are reported as "remote" instead.
 """
@@ -39,6 +42,18 @@ ACTION_KEYS = ('Enter Action', 'Exit Action', 'Repeat Action', 'Action', 'Try Ac
 # keys naming objects; used for actions that run in another map
 REMOTE_KEYS = ('Target Name', 'Relay Name', 'New Location', 'New Compass Target', 'Triggered By Name')
 # scalar keys that are bookkeeping, not worth showing
+# keys naming an inventory item definition (Inventory/Item Definitions/<def>.txt)
+ITEM_KEYS = ('Inventory Item Definition', 'Definition Index')
+# keys naming a model to create
+MODEL_KEYS = ('Model to Create', 'New Model', 'New Child Model')
+ITEM_VERBS = {
+    'CCheckForInventoryItemAction': 'Check for item',
+    'CGiveDefaultInventoryItemAction': 'Give item',
+    'CGiveCustomInventoryItemAction': 'Give item',
+    'CUseInventoryItemAction': 'Use item',
+    'CDiscoverInventoryItemAction': 'Discover item',
+    'CUseChargeFromInventoryItemAction': 'Use charge from item',
+}
 NOISE = {'Marked For Deletion', 'Broadcaster', 'Was Triggered', 'Next Repeat Time', 'Next Action Index',
          'AI Instigator', 'AI Trigger', 'Touching LayerPart', 'Item Count'}
 
@@ -65,20 +80,45 @@ def _who(s):
     return ', '.join(who) or 'nobody'
 
 
-def _generated_models(node):
+def _generated_model_paths(node):
     things = node.get('Things to Generate')
     if not isinstance(things, Node):
         return []
+    return [t.scalars()['Model'] for _, t in things.props if isinstance(t, Node) and t.scalars().get('Model')]
+
+
+def _generated_models(node):
+    return [m.split('/')[-1] for m in _generated_model_paths(node)]
+
+
+def _items(node):
+    """Inventory items an action names: [{'def', 'segments'}]. A custom item
+    (CGiveCustomInventoryItemAction) is a nested node with its own Definition
+    Index and, for weapon parts, the segments it gives."""
     out = []
-    for _, t in things.props:
-        if isinstance(t, Node) and t.scalars().get('Model'):
-            out.append(t.scalars()['Model'].split('/')[-1])
+    for n in [node] + [v for _, v in node.props if isinstance(v, Node) and 'InventoryItem' in v.cls and 'Action' not in v.cls]:
+        s = n.scalars()
+        d = next((s[k] for k in ITEM_KEYS if s.get(k) and not s[k].startswith('!')), None)
+        if not d:
+            continue
+        segs = n.get('Segments')
+        segments = [v for k, v in segs.props if k == 'Segment' and isinstance(v, str)] if isinstance(segs, Node) else []
+        out.append({'def': d, 'segments': segments})
     return out
+
+
+def _item_text(items):
+    return ', '.join(f"'{i['def']}'" + (f" ({', '.join(x.split('/')[-1] for x in i['segments'])})" if i['segments'] else '')
+                     for i in items)
 
 
 def _label(node):
     """One-line description of an action or AI node."""
     c, s = node.cls, node.scalars()
+    if c in ITEM_VERBS:
+        return f"{ITEM_VERBS[c]} {_item_text(_items(node))}"
+    if c == 'CCreateDefaultEntityAction':
+        return f"Create {s.get('Model to Create', '').split('/')[-1]}"
     if c == 'CSendMessageAction':
         return f"Send '{s.get('Message', '')}' to '{s.get('Target', '')}'"
     if c == 'CGeneratorAI':
@@ -131,7 +171,7 @@ def _refs(node, names):
         skip.add('New Location')
     found = []
     for k, v in node.props:
-        if isinstance(v, str) and v in names and k not in skip and v not in found:
+        if isinstance(v, str) and v.lower() in names and k not in skip and v not in found:
             found.append(v)
     return found
 
@@ -152,6 +192,14 @@ def _action(node, key, names, depth=0, other_map=None):
     if node.cls == 'COtherMapAction' and s.get('Other Map Name'):
         entry['map'] = {'name': s['Other Map Name'], 'location': ''}
         other_map = s['Other Map Name']
+    items = _items(node) if node.cls != 'COverridePickupAI' else []
+    if items:
+        entry['items'] = items
+    models = [s[k] for k in MODEL_KEYS if s.get(k) and not s[k].startswith('!')]
+    if node.cls == 'CGeneratorAI':
+        models += [m for m in _generated_model_paths(node) if m not in models]
+    if models:
+        entry['models'] = models
     if node.cls == 'CZaxDialogAction':
         entry['dialog'] = {'script': s.get('Script', ''), 'line': s.get('Line', '')}
     if node.cls in TRIGGER_KINDS:
@@ -182,7 +230,8 @@ def _action(node, key, names, depth=0, other_map=None):
 
 def _has_events(entry):
     """True if the tree does anything worth listing as an event."""
-    if entry.get('trigger') or entry['cls'] == 'CRelayAI' or entry['refs'] or 'map' in entry or 'dialog' in entry:
+    if (entry.get('trigger') or entry['cls'] == 'CRelayAI' or entry['refs'] or 'map' in entry or 'dialog' in entry
+            or 'items' in entry or 'models' in entry):
         return True
     if 'Action' in entry['cls'] and entry['cls'] not in ('CMultipleActionsAction', 'CSeriesAction'):
         return True
@@ -199,7 +248,8 @@ OBJECT_ACTION_LABELS = {
 
 def event_tree(obj_node, names):
     """Event trees of one object: its activities and its own actions
-    (Destroyed Action...), only those that do something."""
+    (Destroyed Action...), only those that do something. names: the level's
+    object names, lower case."""
     out = []
     activity = obj_node.get('Activity')
     if isinstance(activity, Node):

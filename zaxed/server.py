@@ -7,6 +7,9 @@ API (all GET):
   /api/object?path=P&id=N     original text of one object (text/plain)
   /api/objectprops?path=P&id=N  one object's full property tree (JSON)
   /api/crossrefs?path=P       events in other maps leading into this one (JSON)
+  /api/itemrefs?def=D&segment=S&model=M
+                              events in any map using item D (segment S) or
+                              creating model M (JSON)
   /api/dialog?script=S&line=L dialogue entry: speakers, text, voice file (JSON)
   /api/file?name=F            a file from DATA.dat (voice files: audio/ogg)
   /api/texture?name=T         terrain texture T: 4-byte header (uint16 w, h)
@@ -36,21 +39,24 @@ FRM16_HEADER = 36     # .frm16: 36-byte header, w*h RGB565, then 512 trailing by
 
 class LevelCache:
     """Parsed levels, so object text can be served without reparsing. Objects
-    get their model's collision outline ("collision", relative points) and
-    "pickup" if the model is collected on touch (CPickupAI)."""
+    get their model's collision outline ("collision", relative points),
+    "pickup" if the model is collected on touch (CPickupAI) and "item", the
+    inventory item it gives ({"def", "segments"})."""
 
     def __init__(self, archive):
         self.archive = archive
         self._lock = threading.Lock()
         self._levels = {}
-        self._models = {}        # model (lower) -> (outline points, is pickup)
+        self._models = {}        # model (lower) -> (outline points, is pickup, item)
+        self._defs = scripts.item_definitions(archive)
 
     def _model_info(self, model_name):
         key = model_name.lower()
         if key not in self._models:
             path = f'Cache/Models/{model_name}.mdl16'
             data = self.archive.read(path) if self.archive.exists(path) else b''
-            self._models[key] = (model.collision(data), model.is_pickup(data))
+            self._models[key] = (model.collision(data), model.is_pickup(data),
+                                 model.pickup_item(data, lambda n: n.lower() in self._defs))
         return self._models[key]
 
     def get(self, path):
@@ -60,10 +66,12 @@ class LevelCache:
                 summary, lines, nodes = zaxfile.level_summary(text)
                 for obj in summary['objects']:
                     if obj['model']:
-                        outline, pickup = self._model_info(obj['model'])
+                        outline, pickup, item = self._model_info(obj['model'])
                         if outline:
                             obj['collision'] = outline
                         obj['pickup'] = pickup
+                        if item:
+                            obj['item'] = item
                 self._levels = {path: (summary, lines, nodes)}     # keep only the latest
             return self._levels[path]
 
@@ -141,6 +149,8 @@ def make_handler(archive):
                     return self._json(zaxfile.node_json(nodes[int(q['id'])]))
                 if url.path == '/api/crossrefs':
                     return self._json(crossrefs.get(q['path']))
+                if url.path == '/api/itemrefs':
+                    return self._json(crossrefs.item_users(q.get('def', ''), q.get('segment', ''), q.get('model', '')))
                 if url.path == '/api/dialog':
                     return self._json(scripts.dialog(archive, q['script'], q['line']))
                 if url.path == '/api/file':

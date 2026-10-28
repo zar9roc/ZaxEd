@@ -169,7 +169,7 @@ def objects(root, nodes=None):
             continue
         found.append((node, scal, parent, x, y, polygon))
 
-    names = {scal.get('Name', '') for _, scal, _, _, _, _ in found} - {''}
+    names = {scal.get('Name', '').lower() for _, scal, _, _, _, _ in found} - {''}
     result = []
     for node, scal, parent, x, y, polygon in found:
         model = scal.get('Model', '')

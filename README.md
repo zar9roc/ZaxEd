@@ -31,6 +31,7 @@ view toggles on for that page load.
 | Events | Events tab lists every object with triggers/relays/actions; select one to see its outline and "referenced by" in Properties (names are links) and arrows on the map |
 | Properties window | Double-click an object (map, Objects or Events list): tabs General (grouped: identity with sprite preview, placement, state flags, gameplay, other), Events, Links, All properties (tree), Source. Several can be open; drag by the title, resize from the corner |
 | Palette | All 1118 models of the game, like the Heroes 3 object palette: category buttons, area selector, search, thumbnails grouped by folder; the yellow badge counts uses on the open map. Click a model to highlight its instances on the map, step through them with the arrows (or double-click the tile) |
+| Item uses | Select a pickup (or any object): Properties and the Links tab list "Uses of item": events in any map that check for, give, use or discover the inventory item it gives (weapon parts: that segment only), or that create its model. Links select the object, or open its map |
 | Other maps, dialogue | In event outlines, purple links open another map with the target object selected; speech-bubble links show the dialogue line and play its voice. "Entered from other maps" (Properties, Map tab) lists events elsewhere leading here |
 
 The Properties tab shows the object's original text from the level file; the
@@ -115,6 +116,17 @@ Generate: weighted models, Max Simultaneous, Delay Between Spawns, After
 Action for each spawn); a pad's power source has `Destroyed Action =
 CSendMessageAction(Message=turn gen off, Target=<pad name>)`, which stops the
 generator ("turn gen on" restarts one).
+Object names in events are matched ignoring case, as the game does (the
+pedestal next to the "Mega 6" pickup runs `CDeleteAction(Target Name=mega 6)`).
+**Items**: a pickup model's `CPickupAI` names the inventory item it gives (an
+`Inventory/Item Definitions/<def>.txt`; weapon parts add a segment such as
+`MegaFusionDisruptor/fusionbarrell1part`). Events refer to items by
+definition: `Inventory Item Definition` in CCheckForInventoryItemAction,
+CGiveDefaultInventoryItemAction, CUseInventoryItemAction,
+CDiscoverInventoryItemAction and CUseChargeFromInventoryItemAction, or a
+nested item node (`Definition Index`, `Segments`) in
+CGiveCustomInventoryItemAction. Models are created by
+CCreateDefaultEntityAction (`Model to Create`), CSetModelAction and spawners.
 `CSwitchMapAction`, `CTeleportAction` and `CRelocateAction` go to `New Map
 Name` (= `Levels/<name>.zax`, any case) at the object named `New Location`
 there; `COtherMapAction` (`Other Map Name`) runs its nested actions in that

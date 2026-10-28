@@ -25,8 +25,9 @@ const state = {
   view: { x: 0, y: 0, zoom: 1 },
   tool: 'select',
   toggles: { grid: false, labels: false, hidden: false, terrain: true, sprites: true, markers: false, events: true, collision: false },
-  byName: new Map(),       // object name -> [ids]
-  incoming: new Map(),     // object name -> [{id, label, cls}] events elsewhere referring to it
+  byName: new Map(),       // object name (lower case: the game ignores case) -> [ids]
+  incoming: new Map(),     // object name (lower case) -> [{id, label, cls}] events elsewhere referring to it
+  itemrefs: new Map(),     // /api/itemrefs query -> promise of events using an item / model
   sprites: new Map(),      // "model|seq" -> {img, hx, hy, w, h, alpha} | null (none) | 'loading'
   drawOrder: [],           // object ids sorted by y (back to front)
   layers: {},              // category -> visible
@@ -113,7 +114,7 @@ async function openLevel(path, opts = {}) {
     let pick = new URLSearchParams(location.search).get('select');     // select=<object name>
     if (path !== new URLSearchParams(location.search).get('map')) pick = null;
     pick = opts.select || pick;
-    const pickId = opts.selectId !== undefined ? opts.selectId : (pick && state.byName.has(pick) ? state.byName.get(pick)[0] : -1);
+    const pickId = opts.selectId !== undefined ? opts.selectId : (pick && state.byName.has(pick.toLowerCase()) ? state.byName.get(pick.toLowerCase())[0] : -1);
     if (pickId >= 0) {
       select(pickId, !v || opts.select !== undefined || opts.selectId !== undefined);
       for (const t of $$('.tab')) if (t.dataset.tab === 'props') t.click();
@@ -204,15 +205,17 @@ function indexEvents(level) {
   state.incoming = new Map();
   for (const o of level.objects) {
     if (!o.name) continue;
-    if (!state.byName.has(o.name)) state.byName.set(o.name, []);
-    state.byName.get(o.name).push(o.id);
+    const key = o.name.toLowerCase();
+    if (!state.byName.has(key)) state.byName.set(key, []);
+    state.byName.get(key).push(o.id);
   }
   for (const o of level.objects)
     for (const e of o.events)
       walkEvent(e, (n) => {
         for (const ref of n.refs) {
-          if (!state.incoming.has(ref)) state.incoming.set(ref, []);
-          state.incoming.get(ref).push({ id: o.id, label: n.label, cls: n.cls });
+          const key = ref.toLowerCase();
+          if (!state.incoming.has(key)) state.incoming.set(key, []);
+          state.incoming.get(key).push({ id: o.id, label: n.label, cls: n.cls });
         }
       });
 }
@@ -325,10 +328,10 @@ function drawLinks(ctx, sel, sx, sy) {
   for (const e of sel.events)
     walkEvent(e, (n) => {
       for (const ref of n.refs)
-        for (const id of state.byName.get(ref) || [])
+        for (const id of state.byName.get(ref.toLowerCase()) || [])
           if (id !== sel.id) arrow(ctx, sx(sel.x), sy(sel.y), sx(L.objects[id].x), sy(L.objects[id].y), linkColor(n.cls, n.label), false);
     });
-  for (const inc of (sel.name && state.incoming.get(sel.name)) || [])
+  for (const inc of (sel.name && state.incoming.get(sel.name.toLowerCase())) || [])
     if (inc.id !== sel.id) arrow(ctx, sx(L.objects[inc.id].x), sy(L.objects[inc.id].y), sx(sel.x), sy(sel.y), linkColor(inc.cls, inc.label), true);
 }
 
@@ -371,7 +374,7 @@ function refLink(name) {
   const a = document.createElement('a');
   a.textContent = name;
   a.href = '#';
-  const ids = state.byName.get(name) || [];
+  const ids = state.byName.get(name.toLowerCase()) || [];
   if (!ids.length) a.classList.add('dead');
   a.addEventListener('click', (ev) => { ev.preventDefault(); if (ids.length) select(ids[0], true); });
   return a;

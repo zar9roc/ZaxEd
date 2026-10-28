@@ -167,6 +167,27 @@ def is_pickup(data):
     return b'\x09\x00\x00\x00CPickupAI' in data
 
 
+def pickup_item(data, is_definition):
+    """Inventory item a pickup model gives: {'def', 'segments'} or None.
+    CPickupAI is followed by the item's class, its definition name (an
+    Inventory/Item Definitions file; is_definition(name) tells) and, for
+    weapon parts, segment names ('MegaFusionDisruptor/fusionbarrell1part')
+    up to the next '!' placeholder."""
+    i = data.find(b'\x09\x00\x00\x00CPickupAI')
+    if i < 0:
+        return None
+    strings = [m.decode('latin1') for m in re.findall(rb'[ -~]{3,}', data[i + 13:i + 1000])]
+    for k, name in enumerate(strings):
+        if not name.startswith('!') and is_definition(name):
+            segments = []
+            for later in strings[k + 1:]:
+                if later.startswith('!') or '/' not in later:
+                    break
+                segments.append(later)
+            return {'def': name, 'segments': segments}
+    return None
+
+
 def png(width, height, rgba):
     """Minimal RGBA PNG encoder (no filtering)."""
     def chunk(tag, body):
