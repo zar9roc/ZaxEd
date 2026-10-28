@@ -149,3 +149,38 @@ u { text-decoration: underline; }
 #propsevents a.dead { color: #a0a0a0; text-decoration: line-through; cursor: default; }
 .legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: #303030; }
 .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 3px; border: 1px solid #000; vertical-align: -1px; }
+
+/* floating windows (properties, dialogue) */
+.window.float { position: fixed; z-index: 100; min-width: 280px; min-height: 160px; resize: both; overflow: hidden; }
+.window.float .wtitle { cursor: move; }
+.window.float .wbody { padding: 6px; gap: 0; overflow: hidden; }
+.wtabs { display: flex; padding-left: 2px; margin-bottom: -2px; z-index: 1; }
+.wtabbody { flex: 1; min-height: 0; padding: 8px; display: flex; }
+.wpage { display: none; flex: 1; min-height: 0; min-width: 0; flex-direction: column; gap: 6px; overflow: auto; user-select: text; }
+.wpage.active { display: flex; }
+.wpage.scroll { display: none; }
+.wpage.scroll.active { display: block; }
+fieldset.group { margin: 0; padding: 4px 8px 6px; border: 1px solid var(--shadow); box-shadow: 1px 1px 0 var(--light), inset 1px 1px 0 var(--light); }
+fieldset.group legend { padding: 0 3px; }
+.pgtop { display: flex; gap: 8px; align-items: stretch; }
+.pgtop fieldset { flex: 1; min-width: 0; }
+.preview { width: 120px; flex: none; display: flex; align-items: center; justify-content: center; background: #2a2a2a; margin-top: 7px; }
+.pgrid { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; }
+.pkey { color: #404040; white-space: nowrap; }
+.pval { overflow-wrap: anywhere; }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.checks label { display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.small { font-size: 11px; margin-top: 4px; }
+.dim { color: #707070; }
+.tree details { margin-left: 12px; }
+.tree > details { margin-left: 0; }
+.tree summary { cursor: default; font-weight: bold; }
+.tree .trow { margin-left: 26px; white-space: nowrap; }
+.mono, pre.source { font: 11px "DejaVu Sans Mono", monospace; }
+pre.source { flex: 1; margin: 0; padding: 4px; overflow: auto; background: #fff; white-space: pre; }
+a.maplink, a.dialoglink { color: #6a00a0; }
+#mapentry { flex: none; max-height: 30%; padding: 2px 4px; }
+.dialogue { gap: 8px !important; }
+.dtext { flex: 1; overflow: auto; background: #fff; padding: 6px 8px; user-select: text; }
+.dtext p { margin: 0 0 6px; line-height: 1.45; }
+.dialogue audio { width: 100%; }

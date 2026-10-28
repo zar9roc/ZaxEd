@@ -72,7 +72,8 @@ async function loadTexture(name) {
   }
 }
 
-async function openLevel(path) {
+// opts: {select: object name, selectId: object id} to select after loading
+async function openLevel(path, opts = {}) {
   showLoading(true);
   try {
     const level = await api('/api/level?path=' + encodeURIComponent(path));
@@ -84,6 +85,8 @@ async function openLevel(path) {
     state.tiles.clear();
     state.queue = [];
     state.selected = -1;
+    state.crossrefs = null;          // null until /api/crossrefs answers
+    for (const w of $$('.float')) if (!w.dataset.key || !w.dataset.key.startsWith('dlg|')) w.remove();
     const cats = [...new Set(level.objects.map((o) => o.category))].sort();
     const saved = store.get('layers', {});
     // plain polygons (blockers...) are big and many: off unless asked for
@@ -106,11 +109,22 @@ async function openLevel(path) {
       state.view.zoom = zoom || 1;
       centerOn(x, y);
     }
-    const pick = new URLSearchParams(location.search).get('select');     // select=<object name>
-    if (pick && path === new URLSearchParams(location.search).get('map') && state.byName.has(pick)) {
-      select(state.byName.get(pick)[0], !v);
+    let pick = new URLSearchParams(location.search).get('select');     // select=<object name>
+    if (path !== new URLSearchParams(location.search).get('map')) pick = null;
+    pick = opts.select || pick;
+    const pickId = opts.selectId !== undefined ? opts.selectId : (pick && state.byName.has(pick) ? state.byName.get(pick)[0] : -1);
+    if (pickId >= 0) {
+      select(pickId, !v || opts.select !== undefined || opts.selectId !== undefined);
       for (const t of $$('.tab')) if (t.dataset.tab === 'props') t.click();
+      if (new URLSearchParams(location.search).get('props') && !opts.select && opts.selectId === undefined) openObjectWindow(pickId);
     }
+    // events in other maps leading here (index may still be building)
+    api('/api/crossrefs?path=' + encodeURIComponent(path)).then((refs) => {
+      if (state.path !== path) return;
+      state.crossrefs = refs;
+      buildMapInfo();
+      showProperties();
+    }).catch(() => {});
   } catch (e) {
     alert('Could not open map:\n' + e.message);
   } finally {
@@ -364,47 +378,10 @@ function showEvents(o) {
   const box = $('#propsevents');
   box.innerHTML = '';
   if (o.events.length) {
-    const h = document.createElement('div');
-    h.className = 'caption';
-    h.textContent = 'Events';
-    box.append(h);
-    for (const e of o.events)
-      walkEvent(e, (n, depth) => {
-        const line = document.createElement('div');
-        line.className = 'evline';
-        line.style.marginLeft = 10 + depth * 14 + 'px';
-        if (depth) {
-          const k = document.createElement('span');
-          k.className = 'evkey';
-          k.textContent = n.key + ': ';
-          line.append(k);
-        }
-        line.append(document.createTextNode(n.label));
-        for (const ref of n.refs) {
-          line.append(document.createTextNode(' → '));
-          line.append(refLink(ref));
-        }
-        box.append(line);
-      });
+    box.append(el('div', 'caption', 'Events'));
+    renderEvents(box, o);
   }
-  const inc = (o.name && state.incoming.get(o.name)) || [];
-  if (inc.length) {
-    const h = document.createElement('div');
-    h.className = 'caption';
-    h.textContent = 'Referenced by';
-    box.append(h);
-    for (const i of inc) {
-      const src = state.level.objects[i.id];
-      const line = document.createElement('div');
-      line.className = 'evline';
-      const a = document.createElement('a');
-      a.href = '#';
-      a.textContent = objectTitle(src);
-      a.addEventListener('click', (ev) => { ev.preventDefault(); select(src.id, true); });
-      line.append(a, document.createTextNode(': ' + i.label));
-      box.append(line);
-    }
-  }
+  renderIncoming(box, o);
 }
 
 // ---------------------------------------------------------------- terrain
@@ -879,6 +856,17 @@ function buildMapInfo() {
     row.append(thumb, text);
     list.append(row);
   });
+  const entry = $('#mapentry');
+  entry.innerHTML = '';
+  for (const r of state.crossrefs || []) {
+    const row = el('div', 'evline');
+    const a = el('a', '', r.from.replace(/^Levels\//, '').replace(/\.zax$/i, '') + ' \u25B8 ' + r.title);
+    a.href = '#';
+    a.addEventListener('click', (ev) => { ev.preventDefault(); openLevel(r.from, { selectId: r.id }); });
+    row.append(a, document.createTextNode(': ' + r.label));
+    entry.append(row);
+  }
+  if (!entry.children.length) entry.append(el('div', 'dim', state.crossrefs ? 'None found.' : 'Searching...'));
   $('#st-map').textContent = `${L.info['Map Description'] || ''} - ${state.path} - ${L.width} x ${L.height}, ${L.objects.length} objects`;
 }
 
@@ -1000,6 +988,17 @@ function drawLabel(ctx, o, x, y, r) {
 function setupInput() {
   let drag = null;
   mapCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  mapCanvas.addEventListener('dblclick', (e) => {
+    if (!state.level || state.tool !== 'select') return;
+    const rect = mapCanvas.getBoundingClientRect();
+    const id = hitTest(e.clientX - rect.left, e.clientY - rect.top);
+    if (id >= 0) openObjectWindow(id);
+  });
+  for (const list of ['#objlist', '#evlist'])
+    $(list).addEventListener('dblclick', (e) => {
+      const row = e.target.closest('.row');
+      if (row) openObjectWindow(Number(row.dataset.id));
+    });
   mapCanvas.addEventListener('mousedown', (e) => {
     if (!state.level) return;
     const pan = state.tool === 'hand' || e.button === 1 || e.button === 2;

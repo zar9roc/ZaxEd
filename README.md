@@ -14,7 +14,8 @@ Needs only Python 3 (standard library) and a web browser. The server listens on
 127.0.0.1 only. Stop it with Ctrl+C.
 
 Deep links: `http://127.0.0.1:8642/?map=Levels/ACT%201/M1M2/01%20Main.zax&view=2010,1884,1&select=fruit%20relay`
-opens a map centred on x, y at a zoom (1 = 100%) and selects an object by name.
+opens a map centred on x, y at a zoom (1 = 100%) and selects an object by name;
+add `&props=1` to open its properties window.
 
 ## Using it
 
@@ -27,6 +28,8 @@ opens a map centred on x, y at a zoom (1 = 100%) and selects an object by name.
 | Layers | Objects tab: tick categories on/off; filter by name or model |
 | Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites, E events |
 | Events | Events tab lists every object with triggers/relays/actions; select one to see its outline and "referenced by" in Properties (names are links) and arrows on the map |
+| Properties window | Double-click an object (map, Objects or Events list): tabs General (grouped: identity with sprite preview, placement, state flags, gameplay, other), Events, Links, All properties (tree), Source. Several can be open; drag by the title, resize from the corner |
+| Other maps, dialogue | In event outlines, purple links open another map with the target object selected; speech-bubble links show the dialogue line and play its voice. "Entered from other maps" (Properties, Map tab) lists events elsewhere leading here |
 
 The Properties tab shows the object's original text from the level file; the
 Map tab shows the level's settings and its terrain textures. The status bar
@@ -64,7 +67,10 @@ Polygons layer, off by default.
   terrain textures, object sprites as PNG) and the static web UI.
 - `zaxed/model.py` - model (.mdl16) frame finder, RLE decoder, PNG encoder.
 - `zaxed/events.py` - readable event trees from objects' Activity (triggers,
-  relays, nested actions); references found by matching values to object names.
+  relays, nested actions); references found by matching values to object names;
+  map targets (`New Map Name` / `New Location`, `Other Map Name`) and dialogue.
+- `zaxed/scripts.py` - dialogue lookup in `.RDS` scripts (+ voice file) and the
+  cross-map index (built in the background at startup, ~10 s for all maps).
 - `web/` - the UI (plain HTML/CSS/JS, no build step).
 
 ## File formats (as far as known)
@@ -99,7 +105,11 @@ Once`, `Enter/Exit/Repeat Action`. `CRelayAI` runs its `Action` when a
 nest (`CMultipleActionsAction`, `CSeriesAction`, `CConditionalAction` with
 `Try/Succeed/Fail Action`, `CDelayAction`...) and refer to objects by name
 (`Target Name`, `Relay Name`, `New Location`...); `CZaxDialogAction` refers to
-a mission script (`.RDS`) line, `CSwitchMapAction` to another map.
+a mission script (`.RDS`) line (voice: `VOs/<line>.ogg` next to the script).
+`CSwitchMapAction`, `CTeleportAction` and `CRelocateAction` go to `New Map
+Name` (= `Levels/<name>.zax`, any case) at the object named `New Location`
+there; `COtherMapAction` (`Other Map Name`) runs its nested actions in that
+other map, so names inside it refer to objects there.
 
 **Object sprites**: `Cache/Models/<Model>.mdl16`, a binary serialisation of
 the model object (length-prefixed strings, floats, nested objects). Its

@@ -138,9 +138,10 @@ def _polygon(value):
     return [[nums[i], nums[i + 1]] for i in range(0, len(nums), 2)]
 
 
-def objects(root):
+def objects(root, nodes=None):
     """All objects: positioned entities and polygon level parts
-    (CFreeRangePoly: trigger areas, blockers...), flat, with their events."""
+    (CFreeRangePoly: trigger areas, blockers...), flat, with their events.
+    If nodes is a list, each object's Node is appended to it (index = id)."""
     from . import events          # events imports Node from here
     found = []
     parents = {}
@@ -197,6 +198,8 @@ def objects(root):
         if polygon:
             obj['polygon'] = polygon
         result.append(obj)
+        if nodes is not None:
+            nodes.append(node)
     return result
 
 
@@ -207,15 +210,26 @@ INFO_KEYS = ('Map Description', 'Width', 'Height', 'Environment Type', 'Default 
 
 
 def level_summary(text):
-    """Everything the viewer needs about a level, JSON-ready."""
+    """Everything the viewer needs about a level, JSON-ready; also the text
+    lines and each object's Node (index = object id)."""
     root, lines = parse(text)
     scal = root.scalars()
     info = {k: scal[k] for k in INFO_KEYS if k in scal}
+    nodes = []
     return {
         'class': root.cls,
         'width': int(float(scal.get('Width', '0') or 0)),
         'height': int(float(scal.get('Height', '0') or 0)),
         'info': info,
         'terrain': terrain(root),
-        'objects': objects(root),
-    }, lines
+        'objects': objects(root, nodes),
+    }, lines, nodes
+
+
+def node_json(node):
+    """A Node as plain data: {"cls", "props": [[key, str | node]], "raw"}."""
+    return {
+        'cls': node.cls,
+        'props': [[k, v if isinstance(v, str) else node_json(v)] for k, v in node.props],
+        'raw': node.raw,
+    }

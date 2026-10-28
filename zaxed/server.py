@@ -4,6 +4,10 @@ API (all GET):
   /api/levels                 level file names in DATA.dat
   /api/level?path=P           level summary: info, terrain grid, objects (JSON)
   /api/object?path=P&id=N     original text of one object (text/plain)
+  /api/objectprops?path=P&id=N  one object's full property tree (JSON)
+  /api/crossrefs?path=P       events in other maps leading into this one (JSON)
+  /api/dialog?script=S&line=L dialogue entry: speakers, text, voice file (JSON)
+  /api/file?name=F            a file from DATA.dat (voice files: audio/ogg)
   /api/texture?name=T         terrain texture T: 4-byte header (uint16 w, h)
                               followed by w*h RGB565 pixels, little-endian
   /api/sprite?model=M&seq=S   PNG of the first frame of model M's sequence S
@@ -22,7 +26,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import model, zaxfile
+from . import model, scripts, zaxfile
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'web')
 
@@ -68,9 +72,15 @@ class SpriteCache:
         return found
 
 
+FILE_TYPES = {'ogg': 'audio/ogg', 'wav': 'audio/wav', 'txt': 'text/plain; charset=latin1',
+              'rds': 'text/plain; charset=latin1', 'zax': 'text/plain; charset=latin1'}
+
+
 def make_handler(archive):
     levels = LevelCache(archive)
     sprites = SpriteCache(archive)
+    crossrefs = scripts.CrossRefs(archive)
+    crossrefs.start()
 
     class Handler(BaseHTTPRequestHandler):
         server_version = 'ZaxEd/0.1'
@@ -100,10 +110,23 @@ def make_handler(archive):
                     names = sorted(n for n in archive.names() if n.lower().endswith('.zax'))
                     return self._json(names)
                 if url.path == '/api/level':
-                    summary, _ = levels.get(q['path'])
+                    summary, _, _ = levels.get(q['path'])
                     return self._json(summary)
+                if url.path == '/api/objectprops':
+                    _, _, nodes = levels.get(q['path'])
+                    return self._json(zaxfile.node_json(nodes[int(q['id'])]))
+                if url.path == '/api/crossrefs':
+                    return self._json(crossrefs.get(q['path']))
+                if url.path == '/api/dialog':
+                    return self._json(scripts.dialog(archive, q['script'], q['line']))
+                if url.path == '/api/file':
+                    name = archive.real_name(q['name'])
+                    if not name:
+                        return self._error(404, 'not found')
+                    ext = name.rsplit('.', 1)[-1].lower()
+                    return self._send(200, archive.read(name), FILE_TYPES.get(ext, 'application/octet-stream'))
                 if url.path == '/api/object':
-                    summary, lines = levels.get(q['path'])
+                    summary, lines, _ = levels.get(q['path'])
                     obj = summary['objects'][int(q['id'])]
                     text = '\n'.join(lines[obj['first_line']:obj['last_line'] + 1])
                     return self._send(200, text.encode('utf-8'), 'text/plain; charset=utf-8')

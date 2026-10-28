@@ -114,6 +114,8 @@
         </div>
         <div class="page" id="page-map">
           <table id="mapinfo"></table>
+          <div class="caption">Entered from other maps</div>
+          <div id="mapentry" class="sunken list entries"></div>
           <div class="caption">Terrain textures (low to high)</div>
           <div id="texlist" class="sunken list"></div>
         </div>
@@ -149,13 +151,15 @@
       <p><b>ZaxEd</b> 0.1 - map viewer for <i>Zax: The Alien Hunter</i>.</p>
       <p>Reads the game's DATA.dat directly; nothing is modified.</p>
       <p>Drag with the hand tool, middle or right mouse button to pan; mouse wheel to zoom;
-        click objects to inspect them. Sprites show each object's first frame.</p>
+        click objects to inspect them; double-click opens a properties window. Sprites show each
+        object's first frame.</p>
       <div class="buttons"><button class="btn" data-close>OK</button></div>
     </div>
   </div>
 </div>
 
 <div id="loading" class="hidden">Loading...</div>
+<script src="windows.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

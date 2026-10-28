@@ -11,9 +11,15 @@ and point at other objects by name (Target Name, Relay Name, New Location...).
 
 event_tree() turns an object's activities into nested
     {"label": str, "cls": str, "key": str, "refs": [name...],
-     "trigger": {...} (triggers only), "children": [...]}
+     "trigger": {...}       triggers only
+     "map": {"name", "location"}       actions that go to another map
+     "dialog": {"script", "line"}      CZaxDialogAction
+     "remote": [{"map", "name"}]       names in another map (see below)
+     "children": [...]}
 References are found from the data: any value inside an event that equals the
-name of an object in the level.
+name of an object in the level. Inside COtherMapAction (Other Map Name), the
+nested actions run in that other map, so their names (REMOTE_KEYS) refer to
+objects there and are reported as "remote" instead.
 """
 from .zaxfile import Node
 
@@ -27,6 +33,8 @@ TRIGGER_KINDS = {
 ACTION_KEYS = ('Enter Action', 'Exit Action', 'Repeat Action', 'Action', 'Try Action', 'Succeed Action',
                'Fail Action', 'Next Action', 'Done action', 'Spawn Action', 'End of path action',
                'Execute After Action')
+# keys naming objects; used for actions that run in another map
+REMOTE_KEYS = ('Target Name', 'Relay Name', 'New Location', 'New Compass Target', 'Triggered By Name')
 # scalar keys that are bookkeeping, not worth showing
 NOISE = {'Marked For Deletion', 'Broadcaster', 'Was Triggered', 'Next Repeat Time', 'Next Action Index',
          'AI Instigator', 'AI Trigger', 'Touching LayerPart', 'Item Count'}
@@ -72,8 +80,11 @@ def _label(node):
         return f"Fire relay '{s.get('Relay Name', '')}'"
     if c in ('CActivateAction', 'CDeactivateAction', 'CDeleteAction', 'CDestroyAction'):
         return f"{_short(c)} '{s.get('Target Name', '')}'"
-    if c == 'CSwitchMapAction':
-        return f"Switch map to {s.get('New Map Name', '')} at '{s.get('New Location', '')}'"
+    if c in ('CSwitchMapAction', 'CTeleportAction'):
+        verb = 'Switch map to' if c == 'CSwitchMapAction' else 'Teleport to'
+        return f"{verb} {s.get('New Map Name', '')} at '{s.get('New Location', '')}'"
+    if c == 'COtherMapAction':
+        return f"In map {s.get('Other Map Name', '')}"
     if c == 'CDelayAction':
         delay = next((v for k, v in s.items() if 'Delay' in k or 'Time' in k), '')
         return f"Wait {delay}".strip()
@@ -89,18 +100,36 @@ def _label(node):
 
 
 def _refs(node, names):
-    """Object names this node itself refers to (not its children)."""
+    """Object names this node itself refers to (not its children). With a
+    New Map Name, New Location names an object in that map, not this one."""
+    skip = {'Name'}
+    if node.get('New Map Name'):
+        skip.add('New Location')
     found = []
     for k, v in node.props:
-        if isinstance(v, str) and v in names and k not in ('Name',) and v not in found:
+        if isinstance(v, str) and v in names and k not in skip and v not in found:
             found.append(v)
     return found
 
 
-def _action(node, key, names, depth=0):
+def _action(node, key, names, depth=0, other_map=None):
     if depth > 40:
         return None
-    entry = {'label': _label(node), 'cls': node.cls, 'key': key, 'refs': _refs(node, names), 'children': []}
+    s = node.scalars()
+    entry = {'label': _label(node), 'cls': node.cls, 'key': key, 'children': [],
+             'refs': [] if other_map else _refs(node, names)}
+    if other_map:
+        remote = [{'map': other_map, 'name': v} for k, v in s.items()
+                  if k in REMOTE_KEYS and v and not v.startswith('$')]
+        if remote:
+            entry['remote'] = remote
+    if s.get('New Map Name'):
+        entry['map'] = {'name': s['New Map Name'], 'location': s.get('New Location', '')}
+    if node.cls == 'COtherMapAction' and s.get('Other Map Name'):
+        entry['map'] = {'name': s['Other Map Name'], 'location': ''}
+        other_map = s['Other Map Name']
+    if node.cls == 'CZaxDialogAction':
+        entry['dialog'] = {'script': s.get('Script', ''), 'line': s.get('Line', '')}
     if node.cls in TRIGGER_KINDS:
         s = node.scalars()
         entry['trigger'] = {
@@ -117,11 +146,11 @@ def _action(node, key, names, depth=0):
         if v.cls == 'Array':                        # list of actions / AIs
             for ik, iv in v.props:
                 if isinstance(iv, Node) and iv.cls:
-                    child = _action(iv, k, names, depth + 1)
+                    child = _action(iv, k, names, depth + 1, other_map)
                     if child:
                         entry['children'].append(child)
         elif k in ACTION_KEYS or 'Action' in v.cls or v.cls.endswith('AI') or k.endswith(' AI'):
-            child = _action(v, k, names, depth + 1)
+            child = _action(v, k, names, depth + 1, other_map)
             if child:
                 entry['children'].append(child)
     return entry
@@ -129,7 +158,7 @@ def _action(node, key, names, depth=0):
 
 def _has_events(entry):
     """True if the tree does anything worth listing as an event."""
-    if entry.get('trigger') or entry['cls'] == 'CRelayAI' or entry['refs']:
+    if entry.get('trigger') or entry['cls'] == 'CRelayAI' or entry['refs'] or 'map' in entry or 'dialog' in entry:
         return True
     if 'Action' in entry['cls'] and entry['cls'] not in ('CMultipleActionsAction', 'CSeriesAction'):
         return True

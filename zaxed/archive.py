@@ -67,6 +67,10 @@ class DataArchive:
     def exists(self, name):
         return name.lower() in self._names
 
+    def real_name(self, name):
+        """The archive's spelling of a name (lookups ignore case), or None."""
+        return self._names.get(name.lower())
+
     def read(self, name):
         real = self._names.get(name.lower())
         if real is None:
