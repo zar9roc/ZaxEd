@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ZaxEd</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="titlebar"><span class="title-icon"></span><span id="title">ZaxEd - Zax: The Alien Hunter map editor</span></div>
+
+  <div id="menubar">
+    <div class="menu" data-menu="file"><u>F</u>ile
+      <div class="dropdown">
+        <div class="item" data-cmd="open">Open map...<span class="key">Ctrl+O</span></div>
+        <div class="item" data-cmd="reload">Reload<span class="key">F5</span></div>
+        <div class="sep"></div>
+        <div class="item disabled">Save<span class="key">Ctrl+S</span></div>
+        <div class="item disabled">New map...</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="view"><u>V</u>iew
+      <div class="dropdown">
+        <div class="item" data-cmd="zoomin">Zoom in<span class="key">+</span></div>
+        <div class="item" data-cmd="zoomout">Zoom out<span class="key">-</span></div>
+        <div class="item" data-cmd="fit">Fit map<span class="key">F</span></div>
+        <div class="item" data-cmd="actual">Actual size<span class="key">1</span></div>
+        <div class="sep"></div>
+        <div class="item check" data-toggle="grid">Tile grid<span class="key">G</span></div>
+        <div class="item check" data-toggle="labels">Object names<span class="key">L</span></div>
+        <div class="item check" data-toggle="hidden">Invisible objects<span class="key">I</span></div>
+        <div class="item check" data-toggle="terrain">Terrain<span class="key">T</span></div>
+      </div>
+    </div>
+    <div class="menu" data-menu="tools"><u>T</u>ools
+      <div class="dropdown">
+        <div class="item" data-cmd="tool-select">Select<span class="key">S</span></div>
+        <div class="item" data-cmd="tool-hand">Hand (pan)<span class="key">H</span></div>
+        <div class="sep"></div>
+        <div class="item disabled">Terrain brush</div>
+        <div class="item disabled">Place object</div>
+      </div>
+    </div>
+    <div class="menu" data-menu="help"><u>H</u>elp
+      <div class="dropdown">
+        <div class="item" data-cmd="about">About ZaxEd</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toolbar">
+    <button class="tb" data-cmd="open" title="Open map (Ctrl+O)">&#128194;</button>
+    <button class="tb" disabled title="Save (not yet)">&#128190;</button>
+    <span class="tbsep"></span>
+    <button class="tb tool" data-cmd="tool-select" title="Select (S)">&#10148;</button>
+    <button class="tb tool" data-cmd="tool-hand" title="Hand / pan (H)">&#9995;</button>
+    <span class="tbsep"></span>
+    <button class="tb" data-cmd="zoomin" title="Zoom in (+)">&#10133;</button>
+    <button class="tb" data-cmd="zoomout" title="Zoom out (-)">&#10134;</button>
+    <button class="tb" data-cmd="fit" title="Fit map (F)">&#9974;</button>
+    <span class="tbsep"></span>
+    <button class="tb toggle" data-toggle="grid" title="Tile grid (G)">#</button>
+    <button class="tb toggle" data-toggle="labels" title="Object names (L)">Aa</button>
+    <button class="tb toggle" data-toggle="hidden" title="Invisible objects (I)">&#128065;</button>
+    <button class="tb toggle" data-toggle="terrain" title="Terrain (T)">&#9968;</button>
+  </div>
+
+  <div id="workspace">
+    <div id="mapframe" class="sunken">
+      <canvas id="map"></canvas>
+      <div id="hscroll" class="scroll h"><div class="thumb"></div></div>
+      <div id="vscroll" class="scroll v"><div class="thumb"></div></div>
+      <div id="corner"></div>
+      <div id="empty">Open a map with File &gt; Open map... (Ctrl+O)</div>
+    </div>
+
+    <div id="side">
+      <div id="minimapframe" class="sunken"><canvas id="minimap" width="220" height="220"></canvas></div>
+      <div id="tabs">
+        <div class="tab active" data-tab="objects">Objects</div>
+        <div class="tab" data-tab="props">Properties</div>
+        <div class="tab" data-tab="map">Map</div>
+      </div>
+      <div id="tabbody" class="raised">
+        <div class="page active" id="page-objects">
+          <div id="layers"></div>
+          <input id="filter" type="text" placeholder="Filter by name or model...">
+          <div id="objlist" class="sunken list"></div>
+        </div>
+        <div class="page" id="page-props">
+          <div id="propsinfo">No object selected.</div>
+          <pre id="propstext" class="sunken"></pre>
+        </div>
+        <div class="page" id="page-map">
+          <table id="mapinfo"></table>
+          <div class="caption">Terrain textures (low to high)</div>
+          <div id="texlist" class="sunken list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <div class="cell sunken" id="st-pos">&nbsp;</div>
+    <div class="cell sunken" id="st-ground">&nbsp;</div>
+    <div class="cell sunken" id="st-zoom">&nbsp;</div>
+    <div class="cell sunken grow" id="st-map">No map loaded</div>
+  </div>
+</div>
+
+<div id="dialog-open" class="dialog hidden">
+  <div class="window">
+    <div class="wtitle">Open map<span class="wclose" data-close>&#10005;</span></div>
+    <div class="wbody">
+      <div id="leveltree" class="sunken list tree"></div>
+      <div class="buttons">
+        <button id="open-ok" class="btn">Open</button>
+        <button class="btn" data-close>Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="dialog-about" class="dialog hidden">
+  <div class="window small">
+    <div class="wtitle">About ZaxEd<span class="wclose" data-close>&#10005;</span></div>
+    <div class="wbody">
+      <p><b>ZaxEd</b> 0.1 - map viewer for <i>Zax: The Alien Hunter</i>.</p>
+      <p>Reads the game's DATA.dat directly; nothing is modified.</p>
+      <p>Drag with the hand tool, middle or right mouse button to pan; mouse wheel to zoom;
+        click objects to inspect them.</p>
+      <div class="buttons"><button class="btn" data-close>OK</button></div>
+    </div>
+  </div>
+</div>
+
+<div id="loading" class="hidden">Loading...</div>
+<script src="app.js"></script>
+</body>
+</html>
