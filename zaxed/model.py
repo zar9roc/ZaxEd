@@ -161,6 +161,12 @@ def collision(data):
     return [list(struct.unpack_from('<ff', data, i + 12 + 8 * k)) for k in range(n)]
 
 
+def is_pickup(data):
+    """True if the model's object has a CPickupAI (items, collectable
+    scenery): touching it collects it rather than being blocked."""
+    return b'\x09\x00\x00\x00CPickupAI' in data
+
+
 def png(width, height, rgba):
     """Minimal RGBA PNG encoder (no filtering)."""
     def chunk(tag, body):

@@ -117,8 +117,12 @@ u32 point count, then x, y floats relative to the object's position (closed,
 last point = first; count 0 = no collision). Objects with `Collideable=1`
 block with that outline; `Full Height=1` blocks everything, `Half Height=1`
 are low obstacles. `CFreeRangePoly` parts with `Collideable=1` and no trigger
-are invisible blockers. The Collision mask view (C) draws these: red full
-height, orange half height, dashed if the object starts inactive.
+are invisible blockers. Models whose object has a `CPickupAI` (items, some
+collectable scenery) are pickups: touching collects them. `Stationary` is set
+on everything, so characters are recognised by category / entity class. The
+Collision mask view (C) draws: red immovable full height, orange immovable
+half height, blue characters, green dotted pickups; faint and dashed if the
+object starts inactive.
 
 **Object sprites**: `Cache/Models/<Model>.mdl16`, a binary serialisation of
 the model object (length-prefixed strings, floats, nested objects). Its

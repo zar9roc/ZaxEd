@@ -396,8 +396,26 @@ function collisionOf(o) {
   return o.collision.map(([x, y]) => [o.x + x, o.y + y]);
 }
 
-// Collision mask layer: red = full height (blocks everything), orange = half
-// height (low obstacles); dashed = inactive (events can switch it on).
+const MOBILE_CLASSES = new Set(['CEntityWalking', 'CEntityFlying', 'CEntityAnimatedUpperBody']);
+
+// What kind of collision an object has: 'pickup' (collected on touch),
+// 'mobile' (characters: block, but move), 'half' (low obstacle), 'full'.
+function collisionKind(o) {
+  if (o.pickup) return 'pickup';
+  if (o.category === 'Characters' || MOBILE_CLASSES.has(o.cls)) return 'mobile';
+  return o.half_height && !o.full_height ? 'half' : 'full';
+}
+
+const COLLISION_STYLE = {
+  full: { rgb: [255, 40, 40], fill: 0.35, dash: [] },
+  half: { rgb: [255, 150, 30], fill: 0.35, dash: [] },
+  mobile: { rgb: [70, 150, 255], fill: 0.25, dash: [] },
+  pickup: { rgb: [60, 230, 90], fill: 0.2, dash: [2, 3] },
+};
+
+// Collision mask layer: red = immovable, full height (blocks everything);
+// orange = immovable, half height (low obstacles); blue = characters;
+// green dotted = pickups. Faint and dashed = inactive (events can switch it on).
 function drawCollision(ctx, sx, sy) {
   for (const o of state.level.objects) {
     if (state.layers[o.category] === false && o.category !== 'Polygons') continue;
@@ -406,12 +424,13 @@ function drawCollision(ctx, sx, sy) {
     ctx.beginPath();
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
     ctx.closePath();
-    const [r, g, b] = o.half_height && !o.full_height ? [255, 150, 30] : [255, 40, 40];
-    ctx.fillStyle = `rgba(${r},${g},${b},${o.active ? 0.35 : 0.12})`;
+    const st = COLLISION_STYLE[collisionKind(o)];
+    const [r, g, b] = st.rgb;
+    ctx.fillStyle = `rgba(${r},${g},${b},${o.active ? st.fill : 0.1})`;
     ctx.fill();
     ctx.strokeStyle = `rgb(${r},${g},${b})`;
-    ctx.lineWidth = 1;
-    ctx.setLineDash(o.active ? [] : [4, 3]);
+    ctx.lineWidth = st.dash.length ? 2 : 1;
+    ctx.setLineDash(o.active ? st.dash : [4, 3]);
     ctx.stroke();
     ctx.setLineDash([]);
   }

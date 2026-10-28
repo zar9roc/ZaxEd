@@ -35,20 +35,22 @@ FRM16_HEADER = 36     # .frm16: 36-byte header, w*h RGB565, then 512 trailing by
 
 class LevelCache:
     """Parsed levels, so object text can be served without reparsing. Objects
-    get their model's collision outline ("collision", relative points)."""
+    get their model's collision outline ("collision", relative points) and
+    "pickup" if the model is collected on touch (CPickupAI)."""
 
     def __init__(self, archive):
         self.archive = archive
         self._lock = threading.Lock()
         self._levels = {}
-        self._outlines = {}      # model (lower) -> points
+        self._models = {}        # model (lower) -> (outline points, is pickup)
 
-    def _outline(self, model_name):
+    def _model_info(self, model_name):
         key = model_name.lower()
-        if key not in self._outlines:
+        if key not in self._models:
             path = f'Cache/Models/{model_name}.mdl16'
-            self._outlines[key] = model.collision(self.archive.read(path)) if self.archive.exists(path) else []
-        return self._outlines[key]
+            data = self.archive.read(path) if self.archive.exists(path) else b''
+            self._models[key] = (model.collision(data), model.is_pickup(data))
+        return self._models[key]
 
     def get(self, path):
         with self._lock:
@@ -57,9 +59,10 @@ class LevelCache:
                 summary, lines, nodes = zaxfile.level_summary(text)
                 for obj in summary['objects']:
                     if obj['model']:
-                        outline = self._outline(obj['model'])
+                        outline, pickup = self._model_info(obj['model'])
                         if outline:
                             obj['collision'] = outline
+                        obj['pickup'] = pickup
                 self._levels = {path: (summary, lines, nodes)}     # keep only the latest
             return self._levels[path]
 
