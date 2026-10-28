@@ -85,13 +85,27 @@
     <div id="side">
       <div id="minimapframe" class="sunken"><canvas id="minimap" width="220" height="220"></canvas></div>
       <div id="tabs">
-        <div class="tab active" data-tab="objects">Objects</div>
+        <div class="tab active" data-tab="palette">Palette</div>
+        <div class="tab" data-tab="objects">Objects</div>
         <div class="tab" data-tab="events">Events</div>
         <div class="tab" data-tab="props">Properties</div>
         <div class="tab" data-tab="map">Map</div>
       </div>
       <div id="tabbody" class="raised">
-        <div class="page active" id="page-objects">
+        <div class="page active" id="page-palette">
+          <div id="palcats"></div>
+          <div class="palfilter">
+            <select id="palarea" title="Area"></select>
+            <input id="palsearch" class="filter" type="text" placeholder="Search models...">
+          </div>
+          <div id="palgrid" class="sunken"></div>
+          <div class="palbar">
+            <span id="palinfo" class="dim">Click a model to find it on the map.</span>
+            <button id="palprev" class="btn small" disabled title="Previous instance">&#9664;</button>
+            <button id="palnext" class="btn small" disabled title="Next instance">&#9654;</button>
+          </div>
+        </div>
+        <div class="page" id="page-objects">
           <div id="layers"></div>
           <input id="filter" class="filter" type="text" placeholder="Filter by name or model...">
           <div id="objlist" class="sunken list"></div>
@@ -163,6 +177,7 @@
 
 <div id="loading" class="hidden">Loading...</div>
 <script src="windows.js"></script>
+<script src="palette.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

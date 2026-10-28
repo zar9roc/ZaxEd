@@ -2,6 +2,7 @@
 
 API (all GET):
   /api/levels                 level file names in DATA.dat
+  /api/models                 model names (Cache/Models/<name>.mdl16), sorted
   /api/level?path=P           level summary: info, terrain grid, objects (JSON)
   /api/object?path=P&id=N     original text of one object (text/plain)
   /api/objectprops?path=P&id=N  one object's full property tree (JSON)
@@ -126,6 +127,11 @@ def make_handler(archive):
             try:
                 if url.path == '/api/levels':
                     names = sorted(n for n in archive.names() if n.lower().endswith('.zax'))
+                    return self._json(names)
+                if url.path == '/api/models':
+                    names = sorted(n[len('Cache/Models/'):-len('.mdl16')] for n in archive.names()
+                                   if n.startswith('Cache/Models/') and n.lower().endswith('.mdl16')
+                                   and not n.startswith('Cache/Models/!'))
                     return self._json(names)
                 if url.path == '/api/level':
                     summary, _, _ = levels.get(q['path'])

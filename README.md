@@ -30,6 +30,7 @@ view toggles on for that page load.
 | Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites, E events, C collision mask |
 | Events | Events tab lists every object with triggers/relays/actions; select one to see its outline and "referenced by" in Properties (names are links) and arrows on the map |
 | Properties window | Double-click an object (map, Objects or Events list): tabs General (grouped: identity with sprite preview, placement, state flags, gameplay, other), Events, Links, All properties (tree), Source. Several can be open; drag by the title, resize from the corner |
+| Palette | All 1118 models of the game, like the Heroes 3 object palette: category buttons, area selector, search, thumbnails grouped by folder; the yellow badge counts uses on the open map. Click a model to highlight its instances on the map, step through them with the arrows (or double-click the tile) |
 | Other maps, dialogue | In event outlines, purple links open another map with the target object selected; speech-bubble links show the dialogue line and play its voice. "Entered from other maps" (Properties, Map tab) lists events elsewhere leading here |
 
 The Properties tab shows the object's original text from the level file; the

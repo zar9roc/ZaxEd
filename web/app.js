@@ -101,6 +101,7 @@ async function openLevel(path, opts = {}) {
     buildLayers();
     buildObjectList();
     buildMapInfo();
+    if (palette.models) { refreshPaletteInstances(); buildPaletteGrid(); }
     showProperties();
     fit();
     const v = new URLSearchParams(location.search).get('view');     // view=x,y,zoom
@@ -664,6 +665,7 @@ function draw() {
     else { ctx.strokeStyle = color; ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]); }
     if (state.toggles.labels && z >= 0.35) drawLabel(ctx, o, x, y, r);
   }
+  drawPaletteHighlight(ctx, sx, sy, z);
   const sel = L.objects[state.selected];
   if (sel) {
     const x = sx(sel.x), y = sy(sel.y);
@@ -1176,6 +1178,7 @@ for (const t of (new URLSearchParams(location.search).get('on') || '').split(','
   if (t in state.toggles) state.toggles[t] = true;
 setupInput();
 syncToggles();
+initPalette().catch((e) => console.warn('palette', e));
 setTool('select');
 redraw();
 const params = new URLSearchParams(location.search);

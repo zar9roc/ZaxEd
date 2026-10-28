@@ -76,7 +76,7 @@ u { text-decoration: underline; }
 
 #tabs { display: flex; padding-left: 2px; margin-bottom: -4px; z-index: 1; }
 .tab {
-  padding: 3px 10px; margin-right: -2px; cursor: default; position: relative; top: 2px;
+  padding: 3px 6px; font-size: 11px; margin-right: -2px; cursor: default; position: relative; top: 2px;
   border: 2px solid; border-bottom: none; border-color: var(--light) var(--dark) transparent var(--light);
   box-shadow: inset -1px 0 var(--shadow);
   border-radius: 3px 3px 0 0; background: var(--face);
@@ -184,3 +184,31 @@ a.maplink, a.dialoglink { color: #6a00a0; }
 .dtext { flex: 1; overflow: auto; background: #fff; padding: 6px 8px; user-select: text; }
 .dtext p { margin: 0 0 6px; line-height: 1.45; }
 .dialogue audio { width: 100%; }
+
+/* object palette */
+#palcats { display: flex; flex-wrap: wrap; gap: 2px; }
+.palcat {
+  font: 11px Tahoma, sans-serif; padding: 2px 5px; background: var(--face);
+  border: 2px solid; border-color: var(--light) var(--dark) var(--dark) var(--light); box-shadow: inset -1px -1px var(--shadow);
+}
+.palcat.on { border-color: var(--dark) var(--light) var(--light) var(--dark); box-shadow: inset 1px 1px var(--shadow); background: #d8d8d8; font-weight: bold; }
+.palfilter { display: flex; gap: 4px; }
+.palfilter select { flex: none; max-width: 120px; font: inherit; }
+.palfilter input { flex: 1; min-width: 0; }
+#palgrid { flex: 1; min-height: 0; overflow: auto; background: #1a1a1a; padding: 2px; }
+.palhead { color: #ffd700; font-weight: bold; padding: 4px 2px 2px; position: sticky; top: -2px; background: #1a1a1a; z-index: 1; }
+.paltiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 3px; }
+.paltile {
+  position: relative; height: 74px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  background: #2b2b2b; border: 1px solid #3c3c3c; cursor: pointer; overflow: hidden;
+}
+.paltile:hover { border-color: #c0c0c0; }
+.paltile.sel { border: 2px solid #ffff00; }
+.paltile img { flex: 1; min-height: 0; max-width: 100%; object-fit: contain; }
+.paltile.noimg img { display: none; }
+.paltile.noimg::before { content: '?'; flex: 1; color: #707070; font-size: 22px; display: flex; align-items: center; }
+.palname { width: 100%; font-size: 10px; color: #e0e0e0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(0,0,0,.6); }
+.paluse { position: absolute; top: 1px; right: 2px; font-size: 10px; font-weight: bold; color: #000; background: #ffd700; padding: 0 3px; }
+.palbar { display: flex; align-items: center; gap: 4px; }
+.palbar #palinfo { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn.small { min-width: 24px; width: 24px; height: 20px; padding: 0; font-size: 9px; }
