@@ -22,7 +22,9 @@ const state = {
   textures: [],            // per terrain texture: {w, h, rgba} or null if missing
   view: { x: 0, y: 0, zoom: 1 },
   tool: 'select',
-  toggles: { grid: false, labels: false, hidden: false, terrain: true },
+  toggles: { grid: false, labels: false, hidden: false, terrain: true, sprites: true, markers: false },
+  sprites: new Map(),      // "model|seq" -> {img, hx, hy, w, h, alpha} | null (none) | 'loading'
+  drawOrder: [],           // object ids sorted by y (back to front)
   layers: {},              // category -> visible
   filter: '',
   selected: -1,
@@ -82,6 +84,8 @@ async function openLevel(path) {
     const saved = store.get('layers', {});
     state.layers = Object.fromEntries(cats.map((c) => [c, saved[c] !== undefined ? saved[c] : true]));
     state.overview = renderOverview();
+    state.drawOrder = level.objects.map((o) => o.id).sort((a, b) => level.objects[a].y - level.objects[b].y || a - b);
+    loadSprites();
     store.set('last', path);
     $('#empty').style.display = 'none';
     document.title = `ZaxEd - ${level.info['Map Description'] || path}`;
@@ -101,6 +105,59 @@ async function openLevel(path) {
   } finally {
     showLoading(false);
   }
+}
+
+// ---------------------------------------------------------------- sprites
+
+const spriteKey = (o) => o.model + '|' + (o.seq || '');
+
+async function loadSprite(o) {
+  const key = spriteKey(o);
+  state.sprites.set(key, 'loading');
+  try {
+    const res = await fetch(`/api/sprite?model=${encodeURIComponent(o.model)}&seq=${encodeURIComponent(o.seq || '')}`);
+    if (!res.ok) { state.sprites.set(key, null); return; }
+    const [hx, hy] = (res.headers.get('X-Hotspot') || '0,0').split(',').map(Number);
+    const img = await createImageBitmap(await res.blob());
+    // alpha mask for pixel-accurate clicks
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const px = ctx.getImageData(0, 0, img.width, img.height).data;
+    const alpha = new Uint8Array(img.width * img.height);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = px[i * 4 + 3];
+    state.sprites.set(key, { img, hx, hy, w: img.width, h: img.height, alpha, seq: res.headers.get('X-Sequence') });
+  } catch (e) {
+    console.warn('sprite', key, e);
+    state.sprites.set(key, null);
+  }
+  redraw();
+}
+
+// Fetch every model's sprite in the background, a few at a time.
+async function loadSprites() {
+  const level = state.level;
+  const todo = [];
+  const seen = new Set();
+  for (const o of level.objects) {
+    const key = spriteKey(o);
+    if (o.model && !seen.has(key) && !state.sprites.has(key)) { seen.add(key); todo.push(o); }
+  }
+  const worker = async () => {
+    while (todo.length && state.level === level) await loadSprite(todo.shift());
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+}
+
+function spriteOf(o) {
+  const s = o.model ? state.sprites.get(spriteKey(o)) : null;
+  return s && s !== 'loading' ? s : null;
+}
+
+// Objects drawn as sprites: shown in game (Visible=1), layer on, sprite known.
+function drawsSprite(o) {
+  return state.toggles.sprites && o.visible && state.layers[o.category] !== false && !!spriteOf(o);
 }
 
 // ---------------------------------------------------------------- terrain
@@ -290,11 +347,29 @@ function draw() {
     ctx.stroke();
   }
 
-  // objects
+  // object sprites, back to front
+  if (state.toggles.sprites) {
+    ctx.imageSmoothingEnabled = z < 1;
+    for (const id of state.drawOrder) {
+      const o = L.objects[id];
+      if (!drawsSprite(o)) continue;
+      const s = spriteOf(o);
+      const x = sx(o.x - s.hx), y = sy(o.y - s.hy);
+      if (x > w || y > h || x + s.w * z < 0 || y + s.h * z < 0) continue;
+      ctx.drawImage(s.img, x, y, s.w * z, s.h * z);
+    }
+  }
+
+  // markers: always without sprites; with sprites only when asked for, or
+  // for objects that have no sprite drawn
   const r = z >= 0.5 ? 5 : z >= 0.2 ? 3.5 : 2.5;
   ctx.font = '11px Tahoma, sans-serif';
   for (const o of L.objects) {
     if (!objectVisible(o)) continue;
+    if (drawsSprite(o) && !state.toggles.markers) {
+      if (state.toggles.labels && z >= 0.35) drawLabel(ctx, o, sx(o.x), sy(o.y), 0);
+      continue;
+    }
     const x = sx(o.x), y = sy(o.y);
     if (x < -40 || y < -40 || x > w + 40 || y > h + 40) continue;
     const color = CATEGORY_COLORS[o.category] || '#ffffff';
@@ -305,15 +380,19 @@ function draw() {
     ctx.strokeStyle = '#000';
     if (o.visible) { ctx.fillStyle = color; ctx.fill(); ctx.stroke(); }
     else { ctx.strokeStyle = color; ctx.setLineDash([2, 2]); ctx.stroke(); ctx.setLineDash([]); }
-    if (state.toggles.labels && z >= 0.35) {
-      const label = o.name || o.model.split('/').pop();
-      ctx.fillStyle = '#000'; ctx.fillText(label, x + r + 3, y + 4);
-      ctx.fillStyle = '#fff'; ctx.fillText(label, x + r + 2, y + 3);
-    }
+    if (state.toggles.labels && z >= 0.35) drawLabel(ctx, o, x, y, r);
   }
   const sel = L.objects[state.selected];
   if (sel) {
     const x = sx(sel.x), y = sy(sel.y);
+    const s = drawsSprite(sel) ? spriteOf(sel) : null;
+    if (s) {                      // sprite bounds
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = '#fff';
+      ctx.strokeRect(Math.round(sx(sel.x - s.hx)) + 0.5, Math.round(sy(sel.y - s.hy)) + 0.5, s.w * z, s.h * z);
+      ctx.setLineDash([]);
+    }
     ctx.lineWidth = 2;
     ctx.strokeStyle = '#fff';
     ctx.beginPath(); ctx.arc(x, y, r + 5, 0, Math.PI * 2); ctx.stroke();
@@ -507,6 +586,8 @@ async function showProperties() {
   add('Name', o.name || '(unnamed)');
   add('Model', o.model || '(none)');
   add('Position', `${Math.round(o.x)}, ${Math.round(o.y)}`);
+  const sp = spriteOf(o);
+  add('Sequence', (o.seq || '(none)') + (sp && sp.seq && sp.seq.toLowerCase() !== (o.seq || '').toLowerCase() ? ` (shown: ${sp.seq})` : ''));
   add('Flags', [o.visible ? 'visible' : 'invisible', o.active ? 'active' : 'inactive', o.stationary ? 'stationary' : 'mobile'].join(', '));
   add('In', `${o.container} (lines ${o.first_line + 1}-${o.last_line + 1})`);
   pre.textContent = 'Loading...';
@@ -626,16 +707,33 @@ function syncToggles() {
 
 // ---------------------------------------------------------------- input
 
+// Object under the cursor: markers first (they're drawn on top), then
+// sprites from front to back, testing the sprite's alpha.
 function hitTest(cx, cy) {
   const L = state.level, v = state.view;
   let best = -1, bestD = 10 * 10;
   for (const o of L.objects) {
-    if (!objectVisible(o)) continue;
+    if (!objectVisible(o) || (drawsSprite(o) && !state.toggles.markers)) continue;
     const dx = (o.x - v.x) * v.zoom - cx, dy = (o.y - v.y) * v.zoom - cy;
     const d = dx * dx + dy * dy;
     if (d < bestD) { bestD = d; best = o.id; }
   }
-  return best;
+  if (best >= 0) return best;
+  const wx = v.x + cx / v.zoom, wy = v.y + cy / v.zoom;
+  for (let i = state.drawOrder.length - 1; i >= 0; i--) {
+    const o = L.objects[state.drawOrder[i]];
+    if (!drawsSprite(o)) continue;
+    const s = spriteOf(o);
+    const px = Math.floor(wx - (o.x - s.hx)), py = Math.floor(wy - (o.y - s.hy));
+    if (px >= 0 && py >= 0 && px < s.w && py < s.h && s.alpha[py * s.w + px]) return o.id;
+  }
+  return -1;
+}
+
+function drawLabel(ctx, o, x, y, r) {
+  const label = o.name || o.model.split('/').pop();
+  ctx.fillStyle = '#000'; ctx.fillText(label, x + r + 3, y + 4);
+  ctx.fillStyle = '#fff'; ctx.fillText(label, x + r + 2, y + 3);
 }
 
 function setupInput() {
@@ -741,6 +839,7 @@ function setupInput() {
       ArrowUp: () => { state.view.y -= step; redraw(); }, ArrowDown: () => { state.view.y += step; redraw(); },
       '+': commands.zoomin, '=': commands.zoomin, '-': commands.zoomout, f: fit, '1': commands.actual,
       g: () => toggle('grid'), l: () => toggle('labels'), i: () => toggle('hidden'), t: () => toggle('terrain'),
+      p: () => toggle('sprites'), m: () => toggle('markers'),
       s: () => setTool('select'), h: () => setTool('hand'),
     };
     const a = actions[k] || actions[k.toLowerCase()];

@@ -6,6 +6,9 @@ API (all GET):
   /api/object?path=P&id=N     original text of one object (text/plain)
   /api/texture?name=T         terrain texture T: 4-byte header (uint16 w, h)
                               followed by w*h RGB565 pixels, little-endian
+  /api/sprite?model=M&seq=S   PNG of the first frame of model M's sequence S
+                              (falls back to Idle); headers X-Hotspot: "hx,hy"
+                              (draw at X - hx, Y - hy) and X-Sequence
   /api/wait?ms=N              empty GIF after N ms (max 10 s); lets headless
                               browsers screenshot after the map has loaded
 Everything else is served from the web/ directory.
@@ -19,7 +22,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import zaxfile
+from . import model, zaxfile
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'web')
 
@@ -42,8 +45,32 @@ class LevelCache:
             return self._levels[path]
 
 
+class SpriteCache:
+    """PNG + hotspot per (model, sequence); models are reused across maps."""
+
+    def __init__(self, archive):
+        self.archive = archive
+        self._lock = threading.Lock()
+        self._sprites = {}
+
+    def get(self, model_name, seq):
+        key = (model_name.lower(), seq.lower())
+        with self._lock:
+            if key in self._sprites:
+                return self._sprites[key]
+        path = f'Cache/Models/{model_name}.mdl16'
+        found = model.sprite(self.archive.read(path), seq) if self.archive.exists(path) else None
+        if found:
+            name, (hx, hy, w, h, rgba) = found
+            found = (name, hx, hy, model.png(w, h, rgba))
+        with self._lock:
+            self._sprites[key] = found
+        return found
+
+
 def make_handler(archive):
     levels = LevelCache(archive)
+    sprites = SpriteCache(archive)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = 'ZaxEd/0.1'
@@ -85,6 +112,20 @@ def make_handler(archive):
                     w, h = struct.unpack_from('<HH', data, 6)
                     pixels = data[FRM16_HEADER:FRM16_HEADER + w * h * 2]
                     return self._send(200, struct.pack('<HH', w, h) + pixels, 'application/octet-stream')
+                if url.path == '/api/sprite':
+                    found = sprites.get(q['model'], q.get('seq', ''))
+                    if not found:
+                        return self._error(404, 'no sprite')
+                    name, hx, hy, body = found
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'image/png')
+                    self.send_header('Content-Length', str(len(body)))
+                    self.send_header('X-Hotspot', f'{hx},{hy}')
+                    self.send_header('X-Sequence', name)
+                    self.send_header('Cache-Control', 'max-age=3600')
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return None
                 if url.path == '/api/wait':
                     time.sleep(min(int(q.get('ms', '0')), 10000) / 1000)
                     return self._send(200, b'GIF89a\x01\x00\x01\x00\x00\x00\x00;', 'image/gif')

@@ -151,6 +151,7 @@ def objects(root):
             'cls': node.cls,
             'name': scal.get('Name', ''),
             'model': model,
+            'seq': scal.get('Cur Sequence', ''),
             'category': model.split('/', 1)[0] if model else '(none)',
             'x': x,
             'y': y,

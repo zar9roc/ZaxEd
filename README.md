@@ -25,15 +25,18 @@ opens a map centred on x, y at a zoom (1 = 100%).
 | Zoom | Mouse wheel (around the cursor), + / -, F to fit, 1 for 100% |
 | Inspect an object | Select tool (S): click a marker, or click it in the Objects list (centres the view) |
 | Layers | Objects tab: tick categories on/off; filter by name or model |
-| Toggles | G tile grid, L object names, I invisible objects, T terrain |
+| Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites |
 
 The Properties tab shows the object's original text from the level file; the
 Map tab shows the level's settings and its terrain textures. The status bar
 shows the cursor position and which terrain textures blend there.
 
-Markers: squares are scenery (`Environments/...` models), circles everything
-else; dashed outlines are objects with `Visible=0` (mostly editor markers:
-triggers, paths, spawn points).
+Objects are drawn with the first frame of their current sequence (`Cur
+Sequence`, usually Idle), back to front by Y. Objects without a sprite, and
+all objects when sprites are off, get markers: squares are scenery
+(`Environments/...` models), circles everything else; dashed outlines are
+objects with `Visible=0` (mostly editor markers: triggers, paths, spawn
+points). Clicking picks the sprite pixel under the cursor.
 
 ## How it works
 
@@ -43,7 +46,8 @@ triggers, paths, spawn points).
 - `zaxed/zaxfile.py` - parser for the engine's text format (`.zax` levels and
   other `ClassName { Key=Value ... }` files); nodes keep their line ranges.
 - `zaxed/server.py` - local HTTP API (level list, level summary, object text,
-  terrain textures) and the static web UI.
+  terrain textures, object sprites as PNG) and the static web UI.
+- `zaxed/model.py` - model (.mdl16) frame finder, RLE decoder, PNG encoder.
 - `web/` - the UI (plain HTML/CSS/JS, no build step).
 
 ## File formats (as far as known)
@@ -68,12 +72,25 @@ values bilinearly across each 64-px tile; the game also applies a noise
 offset 6, height at 8), 128 x 128 RGB565 pixels, 512 trailing bytes. The
 `Textures/<name>.TXT` files only hold surface metadata.
 
-**Object sprites**: `Cache/Models/<Model>.mdl16` (sprite sets with named
-sequences such as Idle) - not decoded yet.
+**Object sprites**: `Cache/Models/<Model>.mdl16`, a binary serialisation of
+the model object (length-prefixed strings, floats, nested objects). Its
+renderable part is a list of sequences, each a name (`Idle`, `Idle 2`,
+`Closed`, `Idle Shadow`...), a blend mode (`Transparent Mask`; `Blend Black
+Bias` = additive glow overlay) and its frames back to back (characters:
+directions x animation frames). Frame header as in `.frm16` (tag `0x1031`,
+hotspot x/y = position of the object's origin inside the image, so draw at
+X - hx, Y - hy; width, height; image size at +36 counting itself), then RLE
+rows: `1nnnnnnn` skip n, `01nnnnnn` n literal RGB565 pixels, `00nnnnnn` next
+pixel repeated n times; then a row offset table, a mask and a second image.
+ZaxEd finds frames by scanning for the tag and accepting only exact RLE
+decodes, and labels each group of frames by the two strings before it
+(`zaxed/model.py`). Shadow sequences have an empty colour image; their shadow
+is in the mask/second image (not decoded yet).
 
 ## Roadmap
 
 1. Viewer: terrain + object markers (done).
-2. Object sprites from `.mdl16` (Environments first), proper draw order.
+2. Object sprites from `.mdl16`, back-to-front order (done). Next: shadows,
+   glow overlays, choosing direction/sequence per object.
 3. Editing: move/delete/duplicate objects, edit properties, save as a copy.
 4. Terrain painting (elevation brush), new maps.
