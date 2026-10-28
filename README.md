@@ -1,7 +1,10 @@
 # ZaxEd
 
 Map viewer (and future editor) for *Zax: The Alien Hunter* (Reflexive, 2001).
-It reads the game's `DATA.dat` directly and never changes it.
+It reads the game's `DATA.dat` directly and never changes it. You need your own
+copy of the game; this repository contains no game files.
+
+See also [ZaxHiRes](https://github.com/zar9roc/ZaxHiRes), a high resolution patch for the game.
 
 ## Running
 
@@ -174,3 +177,7 @@ is in the mask/second image (not decoded yet).
 3. Events: trigger areas, relays, action outlines, links (done, read-only).
 4. Editing: move/delete/duplicate objects, edit properties and events, save as a copy.
 5. Terrain painting (elevation brush), new maps.
+
+## License
+
+MIT, see [LICENSE](LICENSE). *Zax: The Alien Hunter* and its data are © Reflexive Entertainment / JoWooD.
