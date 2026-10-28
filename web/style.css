@@ -98,10 +98,10 @@ u { text-decoration: underline; }
 #layers { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
 #layers label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 #layers .count { color: var(--shadow); }
-#filter { width: 100%; padding: 3px 4px; font: inherit; border: 2px solid; border-color: var(--shadow) var(--light) var(--light) var(--shadow); }
+.filter { width: 100%; padding: 3px 4px; font: inherit; border: 2px solid; border-color: var(--shadow) var(--light) var(--light) var(--shadow); }
 
 #propsinfo { line-height: 1.6; }
-#propsinfo b { display: inline-block; min-width: 64px; }
+#propsinfo b { display: inline-block; min-width: 76px; }
 #propstext { flex: 1; min-height: 0; margin: 0; padding: 4px; overflow: auto; background: #fff; font: 11px "DejaVu Sans Mono", monospace; user-select: text; white-space: pre; }
 
 #mapinfo { border-collapse: collapse; width: 100%; }
@@ -138,3 +138,14 @@ u { text-decoration: underline; }
 .tree .row.lvl2 { padding-left: 40px; }
 
 #loading { position: fixed; left: 50%; top: 45%; transform: translate(-50%, -50%); z-index: 60; padding: 12px 24px; background: var(--face); border: 2px solid; border-color: var(--light) var(--dark) var(--dark) var(--light); box-shadow: 3px 3px 0 rgba(0,0,0,.3); }
+
+.evicon { width: 14px; flex: none; text-align: center; color: #a000a0; font-weight: bold; }
+.list .row.sel .evicon { color: #ffb0ff; }
+#propsevents { max-height: 45%; overflow: auto; flex: none; user-select: text; }
+#propsevents:empty { display: none; }
+.evline { line-height: 1.4; padding: 1px 0; text-indent: -10px; margin-left: 10px; overflow-wrap: anywhere; }
+.evkey { color: #606060; }
+#propsevents a, #propsinfo a { color: #0000c0; }
+#propsevents a.dead { color: #a0a0a0; text-decoration: line-through; cursor: default; }
+.legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: #303030; }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 3px; border: 1px solid #000; vertical-align: -1px; }

@@ -13,8 +13,8 @@ python3 zaxed.py --data /path/to/Zax/Game/DATA.dat --port 8642 --no-browser
 Needs only Python 3 (standard library) and a web browser. The server listens on
 127.0.0.1 only. Stop it with Ctrl+C.
 
-Deep links: `http://127.0.0.1:8642/?map=Levels/ACT%201/M1M2/01%20Main.zax&view=2010,1884,1`
-opens a map centred on x, y at a zoom (1 = 100%).
+Deep links: `http://127.0.0.1:8642/?map=Levels/ACT%201/M1M2/01%20Main.zax&view=2010,1884,1&select=fruit%20relay`
+opens a map centred on x, y at a zoom (1 = 100%) and selects an object by name.
 
 ## Using it
 
@@ -25,7 +25,8 @@ opens a map centred on x, y at a zoom (1 = 100%).
 | Zoom | Mouse wheel (around the cursor), + / -, F to fit, 1 for 100% |
 | Inspect an object | Select tool (S): click a marker, or click it in the Objects list (centres the view) |
 | Layers | Objects tab: tick categories on/off; filter by name or model |
-| Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites |
+| Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites, E events |
+| Events | Events tab lists every object with triggers/relays/actions; select one to see its outline and "referenced by" in Properties (names are links) and arrows on the map |
 
 The Properties tab shows the object's original text from the level file; the
 Map tab shows the level's settings and its terrain textures. The status bar
@@ -38,6 +39,20 @@ all objects when sprites are off, get markers: squares are scenery
 objects with `Visible=0` (mostly editor markers: triggers, paths, spawn
 points). Clicking picks the sprite pixel under the cursor.
 
+### Events
+
+With Events on (E), trigger areas are drawn on the map: polygons
+(`CFreeRangePoly` with a polygon trigger) and ellipses (oval triggers), yellow
+when players set them off, red for enemies/anything, orange for both, dashed
+if they fire only once, faint if the object starts inactive. Event sources get
+an icon (lightning: trigger, circle arrow: relay listener, star: spawn point,
+gear: other). Selecting an object draws arrows to everything its events refer
+to (green activate/open, red deactivate/delete/close, orange relay, blue other)
+and dashed arrows from events elsewhere that refer to it. Event sources stay
+visible while Events is on even if they are invisible in the game (relays are
+hidden editor objects). Plain polygons (collision blockers etc.) are in the
+Polygons layer, off by default.
+
 ## How it works
 
 - `zaxed/archive.py` - DATA.dat is a ZIP (entries stored) whose end-of-central-
@@ -48,6 +63,8 @@ points). Clicking picks the sprite pixel under the cursor.
 - `zaxed/server.py` - local HTTP API (level list, level summary, object text,
   terrain textures, object sprites as PNG) and the static web UI.
 - `zaxed/model.py` - model (.mdl16) frame finder, RLE decoder, PNG encoder.
+- `zaxed/events.py` - readable event trees from objects' Activity (triggers,
+  relays, nested actions); references found by matching values to object names.
 - `web/` - the UI (plain HTML/CSS/JS, no build step).
 
 ## File formats (as far as known)
@@ -72,6 +89,18 @@ values bilinearly across each 64-px tile; the game also applies a noise
 offset 6, height at 8), 128 x 128 RGB565 pixels, 512 trailing bytes. The
 `Textures/<name>.TXT` files only hold surface metadata.
 
+**Events**: each object has an `Activity` array of AI components. Triggers:
+`CTouchingPolygonTriggerAI` (on a `CFreeRangePoly` level part, whose
+`Polygon=x, y, x, y, ...` is the area), `CTouchingOvalTriggerAI` (`X Radius`,
+`YX Ratio` around the object), `CPassThroughTriggerAI`, `CollideTriggerAI`;
+fields `Triggered By Players/Enemies/Projectiles/Anything/Name`, `Trigger Only
+Once`, `Enter/Exit/Repeat Action`. `CRelayAI` runs its `Action` when a
+`CTriggerRelayAction` fires `Relay Name` = the relay object's name. Actions
+nest (`CMultipleActionsAction`, `CSeriesAction`, `CConditionalAction` with
+`Try/Succeed/Fail Action`, `CDelayAction`...) and refer to objects by name
+(`Target Name`, `Relay Name`, `New Location`...); `CZaxDialogAction` refers to
+a mission script (`.RDS`) line, `CSwitchMapAction` to another map.
+
 **Object sprites**: `Cache/Models/<Model>.mdl16`, a binary serialisation of
 the model object (length-prefixed strings, floats, nested objects). Its
 renderable part is a list of sequences, each a name (`Idle`, `Idle 2`,
@@ -92,5 +121,6 @@ is in the mask/second image (not decoded yet).
 1. Viewer: terrain + object markers (done).
 2. Object sprites from `.mdl16`, back-to-front order (done). Next: shadows,
    glow overlays, choosing direction/sequence per object.
-3. Editing: move/delete/duplicate objects, edit properties, save as a copy.
-4. Terrain painting (elevation brush), new maps.
+3. Events: trigger areas, relays, action outlines, links (done, read-only).
+4. Editing: move/delete/duplicate objects, edit properties and events, save as a copy.
+5. Terrain painting (elevation brush), new maps.

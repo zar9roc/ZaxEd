@@ -32,6 +32,7 @@
         <div class="item check" data-toggle="terrain">Terrain<span class="key">T</span></div>
         <div class="item check" data-toggle="sprites">Object sprites<span class="key">P</span></div>
         <div class="item check" data-toggle="markers">Markers on sprites<span class="key">M</span></div>
+        <div class="item check" data-toggle="events">Events (triggers, links)<span class="key">E</span></div>
       </div>
     </div>
     <div class="menu" data-menu="tools"><u>T</u>ools
@@ -67,6 +68,7 @@
     <button class="tb toggle" data-toggle="terrain" title="Terrain (T)">&#9968;</button>
     <button class="tb toggle" data-toggle="sprites" title="Object sprites (P)">&#127796;</button>
     <button class="tb toggle" data-toggle="markers" title="Markers on sprites (M)">&#9673;</button>
+    <button class="tb toggle" data-toggle="events" title="Events: trigger areas and links (E)">&#9889;</button>
   </div>
 
   <div id="workspace">
@@ -82,17 +84,32 @@
       <div id="minimapframe" class="sunken"><canvas id="minimap" width="220" height="220"></canvas></div>
       <div id="tabs">
         <div class="tab active" data-tab="objects">Objects</div>
+        <div class="tab" data-tab="events">Events</div>
         <div class="tab" data-tab="props">Properties</div>
         <div class="tab" data-tab="map">Map</div>
       </div>
       <div id="tabbody" class="raised">
         <div class="page active" id="page-objects">
           <div id="layers"></div>
-          <input id="filter" type="text" placeholder="Filter by name or model...">
+          <input id="filter" class="filter" type="text" placeholder="Filter by name or model...">
           <div id="objlist" class="sunken list"></div>
+        </div>
+        <div class="page" id="page-events">
+          <input id="evfilter" class="filter" type="text" placeholder="Filter events...">
+          <div id="evlist" class="sunken list"></div>
+          <div class="legend">
+            <span><i style="background:#ffd400"></i>by players</span>
+            <span><i style="background:#ff4646"></i>by enemies/anything</span>
+            <span><i style="background:#40ff60"></i>activate</span>
+            <span><i style="background:#ff5050"></i>deactivate</span>
+            <span><i style="background:#ffa030"></i>relay</span>
+            <span><i style="background:#40d8ff"></i>other link</span>
+            <span>dashed: once / incoming</span>
+          </div>
         </div>
         <div class="page" id="page-props">
           <div id="propsinfo">No object selected.</div>
+          <div id="propsevents"></div>
           <pre id="propstext" class="sunken"></pre>
         </div>
         <div class="page" id="page-map">

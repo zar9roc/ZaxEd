@@ -10,6 +10,8 @@ const CATEGORY_COLORS = {
   'Items': '#ffd400',
   'Editor': '#40d8ff',
   'Special Effects': '#c070ff',
+  'Polygons': '#7dff9a',
+  'Trigger areas': '#ffd400',
   '(none)': '#ffffff',
 };
 
@@ -22,7 +24,9 @@ const state = {
   textures: [],            // per terrain texture: {w, h, rgba} or null if missing
   view: { x: 0, y: 0, zoom: 1 },
   tool: 'select',
-  toggles: { grid: false, labels: false, hidden: false, terrain: true, sprites: true, markers: false },
+  toggles: { grid: false, labels: false, hidden: false, terrain: true, sprites: true, markers: false, events: true },
+  byName: new Map(),       // object name -> [ids]
+  incoming: new Map(),     // object name -> [{id, label, cls}] events elsewhere referring to it
   sprites: new Map(),      // "model|seq" -> {img, hx, hy, w, h, alpha} | null (none) | 'loading'
   drawOrder: [],           // object ids sorted by y (back to front)
   layers: {},              // category -> visible
@@ -82,8 +86,10 @@ async function openLevel(path) {
     state.selected = -1;
     const cats = [...new Set(level.objects.map((o) => o.category))].sort();
     const saved = store.get('layers', {});
-    state.layers = Object.fromEntries(cats.map((c) => [c, saved[c] !== undefined ? saved[c] : true]));
+    // plain polygons (blockers...) are big and many: off unless asked for
+    state.layers = Object.fromEntries(cats.map((c) => [c, saved[c] !== undefined ? saved[c] : c !== 'Polygons']));
     state.overview = renderOverview();
+    indexEvents(level);
     state.drawOrder = level.objects.map((o) => o.id).sort((a, b) => level.objects[a].y - level.objects[b].y || a - b);
     loadSprites();
     store.set('last', path);
@@ -99,6 +105,11 @@ async function openLevel(path) {
       const [x, y, zoom] = v.split(',').map(Number);
       state.view.zoom = zoom || 1;
       centerOn(x, y);
+    }
+    const pick = new URLSearchParams(location.search).get('select');     // select=<object name>
+    if (pick && path === new URLSearchParams(location.search).get('map') && state.byName.has(pick)) {
+      select(state.byName.get(pick)[0], !v);
+      for (const t of $$('.tab')) if (t.dataset.tab === 'props') t.click();
     }
   } catch (e) {
     alert('Could not open map:\n' + e.message);
@@ -158,6 +169,242 @@ function spriteOf(o) {
 // Objects drawn as sprites: shown in game (Visible=1), layer on, sprite known.
 function drawsSprite(o) {
   return state.toggles.sprites && o.visible && state.layers[o.category] !== false && !!spriteOf(o);
+}
+
+// ---------------------------------------------------------------- events
+
+const EVENT_ICONS = {
+  CTouchingPolygonTriggerAI: '⚡', CTouchingOvalTriggerAI: '⚡', CPassThroughTriggerAI: '⚡',
+  CollideTriggerAI: '⚡', CRelayAI: '↻', CSpawnPointAI: '✱',
+};
+
+function walkEvent(e, fn, depth = 0) {
+  fn(e, depth);
+  for (const c of e.children) walkEvent(c, fn, depth + 1);
+}
+
+function indexEvents(level) {
+  state.byName = new Map();
+  state.incoming = new Map();
+  for (const o of level.objects) {
+    if (!o.name) continue;
+    if (!state.byName.has(o.name)) state.byName.set(o.name, []);
+    state.byName.get(o.name).push(o.id);
+  }
+  for (const o of level.objects)
+    for (const e of o.events)
+      walkEvent(e, (n) => {
+        for (const ref of n.refs) {
+          if (!state.incoming.has(ref)) state.incoming.set(ref, []);
+          state.incoming.get(ref).push({ id: o.id, label: n.label, cls: n.cls });
+        }
+      });
+}
+
+function triggerOf(o) {
+  return o.events.find((e) => e.trigger);
+}
+
+function triggerColor(t) {
+  if (t.players && t.enemies) return [255, 150, 40];
+  if (t.players) return [255, 212, 0];
+  if (t.enemies) return [255, 70, 70];
+  return [170, 170, 170];
+}
+
+// Area of an object on the map: its polygon, or its oval trigger's ellipse.
+function shapeOf(o) {
+  if (o.polygon) {
+    const pts = o.polygon;
+    let area = 0;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += (pts[j][0] + pts[i][0]) * (pts[j][1] - pts[i][1]);
+    return {
+      pts, area: Math.abs(area / 2),
+      contains(x, y) {
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          const [xi, yi] = pts[i], [xj, yj] = pts[j];
+          if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+      },
+    };
+  }
+  const t = triggerOf(o);
+  if (state.toggles.events && t && t.trigger.radius) {
+    const rx = t.trigger.radius, ry = rx * (t.trigger.ratio || 1);
+    return { rx, ry, area: Math.PI * rx * ry, contains: (x, y) => ((x - o.x) / rx) ** 2 + ((y - o.y) / ry) ** 2 <= 1 };
+  }
+  return null;
+}
+
+function drawEvents(ctx, sx, sy, z) {
+  const L = state.level;
+  for (const o of L.objects) {
+    if (state.layers[o.category] === false) continue;
+    const t = triggerOf(o);
+    const shape = (o.polygon || (state.toggles.events && t)) ? shapeOf(o) : null;
+    if (!shape) continue;
+    const showTrigger = state.toggles.events && t;
+    if (!showTrigger && !o.visible && !state.toggles.hidden) continue;
+    ctx.beginPath();
+    if (shape.pts) {
+      shape.pts.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
+      ctx.closePath();
+    } else ctx.ellipse(sx(o.x), sy(o.y), shape.rx * z, shape.ry * z, 0, 0, Math.PI * 2);
+    if (showTrigger) {
+      const [r, g, b] = triggerColor(t.trigger);
+      ctx.fillStyle = `rgba(${r},${g},${b},${o.active ? 0.18 : 0.08})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgb(${r},${g},${b})`;
+      ctx.lineWidth = o.id === state.selected ? 2.5 : 1.5;
+      ctx.setLineDash(t.trigger.once ? [6, 4] : []);
+    } else {
+      ctx.strokeStyle = 'rgba(125,255,154,0.7)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (!state.toggles.events) return;
+  // event icons next to event sources
+  ctx.font = 'bold 12px Tahoma, sans-serif';
+  for (const o of L.objects) {
+    if (!o.events.length || !objectVisible(o)) continue;
+    const icon = EVENT_ICONS[o.events[0].cls] || '⚙';
+    const x = sx(o.x) + 6, y = sy(o.y) - 6;
+    ctx.fillStyle = '#000'; ctx.fillText(icon, x + 1, y + 1);
+    ctx.fillStyle = '#ff80ff'; ctx.fillText(icon, x, y);
+  }
+}
+
+function linkColor(cls) {
+  if (cls === 'CActivateAction' || cls === 'COpenDoorAction') return '#40ff60';
+  if (cls === 'CDeactivateAction' || cls === 'CDeleteAction' || cls === 'CDestroyAction' || cls === 'CCloseDoorAction') return '#ff5050';
+  if (cls === 'CTriggerRelayAction') return '#ffa030';
+  return '#40d8ff';
+}
+
+function arrow(ctx, x1, y1, x2, y2, color, dashed) {
+  const a = Math.atan2(y2 - y1, x2 - x1), d = Math.hypot(x2 - x1, y2 - y1);
+  if (d < 4) return;
+  const ex = x2 - Math.cos(a) * 8, ey = y2 - Math.sin(a) * 8;
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2;
+  ctx.setLineDash(dashed ? [5, 4] : []);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(ex, ey); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(x2 - Math.cos(a) * 3, y2 - Math.sin(a) * 3);
+  ctx.lineTo(ex - Math.cos(a - 0.5) * 8, ey - Math.sin(a - 0.5) * 8);
+  ctx.lineTo(ex - Math.cos(a + 0.5) * 8, ey - Math.sin(a + 0.5) * 8);
+  ctx.closePath(); ctx.fill();
+}
+
+// Arrows from the selected object to what its events refer to (solid) and
+// from events elsewhere that refer to it (dashed).
+function drawLinks(ctx, sel, sx, sy) {
+  const L = state.level;
+  for (const e of sel.events)
+    walkEvent(e, (n) => {
+      for (const ref of n.refs)
+        for (const id of state.byName.get(ref) || [])
+          if (id !== sel.id) arrow(ctx, sx(sel.x), sy(sel.y), sx(L.objects[id].x), sy(L.objects[id].y), linkColor(n.cls), false);
+    });
+  for (const inc of (sel.name && state.incoming.get(sel.name)) || [])
+    if (inc.id !== sel.id) arrow(ctx, sx(L.objects[inc.id].x), sy(L.objects[inc.id].y), sx(sel.x), sy(sel.y), linkColor(inc.cls), true);
+}
+
+function objectTitle(o) {
+  if (o.name) return o.name;
+  if (o.polygon) return `${o.category === 'Trigger areas' ? 'Trigger area' : 'Polygon'} #${o.id}`;
+  return o.model ? o.model.split('/').pop() : o.cls;
+}
+
+function buildEventList() {
+  const list = $('#evlist');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!state.level) return;
+  const f = ($('#evfilter').value || '').toLowerCase();
+  const frag = document.createDocumentFragment();
+  for (const o of state.level.objects) {
+    if (!o.events.length || state.layers[o.category] === false) continue;
+    const summary = o.events.map((e) => e.label).join('; ');
+    if (f && !(objectTitle(o).toLowerCase().includes(f) || summary.toLowerCase().includes(f))) continue;
+    const row = document.createElement('div');
+    row.className = 'row' + (o.id === state.selected ? ' sel' : '');
+    row.dataset.id = o.id;
+    row.title = summary;
+    const icon = document.createElement('span');
+    icon.className = 'evicon';
+    icon.textContent = EVENT_ICONS[o.events[0].cls] || '⚙';
+    const text = document.createElement('span');
+    text.textContent = objectTitle(o);
+    const dim = document.createElement('span');
+    dim.className = 'dim';
+    dim.textContent = summary;
+    row.append(icon, text, dim);
+    frag.append(row);
+  }
+  list.append(frag);
+}
+
+function refLink(name) {
+  const a = document.createElement('a');
+  a.textContent = name;
+  a.href = '#';
+  const ids = state.byName.get(name) || [];
+  if (!ids.length) a.classList.add('dead');
+  a.addEventListener('click', (ev) => { ev.preventDefault(); if (ids.length) select(ids[0], true); });
+  return a;
+}
+
+function showEvents(o) {
+  const box = $('#propsevents');
+  box.innerHTML = '';
+  if (o.events.length) {
+    const h = document.createElement('div');
+    h.className = 'caption';
+    h.textContent = 'Events';
+    box.append(h);
+    for (const e of o.events)
+      walkEvent(e, (n, depth) => {
+        const line = document.createElement('div');
+        line.className = 'evline';
+        line.style.marginLeft = 10 + depth * 14 + 'px';
+        if (depth) {
+          const k = document.createElement('span');
+          k.className = 'evkey';
+          k.textContent = n.key + ': ';
+          line.append(k);
+        }
+        line.append(document.createTextNode(n.label));
+        for (const ref of n.refs) {
+          line.append(document.createTextNode(' → '));
+          line.append(refLink(ref));
+        }
+        box.append(line);
+      });
+  }
+  const inc = (o.name && state.incoming.get(o.name)) || [];
+  if (inc.length) {
+    const h = document.createElement('div');
+    h.className = 'caption';
+    h.textContent = 'Referenced by';
+    box.append(h);
+    for (const i of inc) {
+      const src = state.level.objects[i.id];
+      const line = document.createElement('div');
+      line.className = 'evline';
+      const a = document.createElement('a');
+      a.href = '#';
+      a.textContent = objectTitle(src);
+      a.addEventListener('click', (ev) => { ev.preventDefault(); select(src.id, true); });
+      line.append(a, document.createTextNode(': ' + i.label));
+      box.append(line);
+    }
+  }
 }
 
 // ---------------------------------------------------------------- terrain
@@ -289,7 +536,8 @@ function redraw() {
 }
 
 function objectVisible(o) {
-  return state.layers[o.category] !== false && (o.visible || state.toggles.hidden);
+  return state.layers[o.category] !== false &&
+    (o.visible || state.toggles.hidden || (state.toggles.events && o.events.length > 0));
 }
 
 function draw() {
@@ -360,12 +608,14 @@ function draw() {
     }
   }
 
+  drawEvents(ctx, sx, sy, z);
+
   // markers: always without sprites; with sprites only when asked for, or
   // for objects that have no sprite drawn
   const r = z >= 0.5 ? 5 : z >= 0.2 ? 3.5 : 2.5;
   ctx.font = '11px Tahoma, sans-serif';
   for (const o of L.objects) {
-    if (!objectVisible(o)) continue;
+    if (!objectVisible(o) || o.polygon) continue;       // polygons are drawn as outlines
     if (drawsSprite(o) && !state.toggles.markers) {
       if (state.toggles.labels && z >= 0.35) drawLabel(ctx, o, sx(o.x), sy(o.y), 0);
       continue;
@@ -398,6 +648,7 @@ function draw() {
     ctx.beginPath(); ctx.arc(x, y, r + 5, 0, Math.PI * 2); ctx.stroke();
     ctx.strokeStyle = '#000';
     ctx.beginPath(); ctx.arc(x, y, r + 7, 0, Math.PI * 2); ctx.stroke();
+    if (state.toggles.events) drawLinks(ctx, sel, sx, sy);
   }
 
   updateScrollbars();
@@ -531,6 +782,7 @@ function buildLayers() {
 }
 
 function buildObjectList() {
+  buildEventList();
   const list = $('#objlist');
   list.innerHTML = '';
   if (!state.level) return;
@@ -547,7 +799,7 @@ function buildObjectList() {
     sw.style.background = CATEGORY_COLORS[o.category] || '#fff';
     sw.style.borderColor = o.visible ? '#000' : (CATEGORY_COLORS[o.category] || '#fff');
     const text = document.createElement('span');
-    text.textContent = o.name || o.model.split('/').pop() || o.cls;
+    text.textContent = objectTitle(o);
     const dim = document.createElement('span');
     dim.className = 'dim';
     dim.textContent = o.name ? o.model.split('/').pop() : '';
@@ -559,7 +811,7 @@ function buildObjectList() {
 
 async function select(id, center) {
   state.selected = id;
-  for (const row of $$('#objlist .row')) row.classList.toggle('sel', Number(row.dataset.id) === id);
+  for (const row of $$('#objlist .row, #evlist .row')) row.classList.toggle('sel', Number(row.dataset.id) === id);
   const o = state.level && state.level.objects[id];
   if (o && center) centerOn(o.x, o.y);
   redraw();
@@ -573,7 +825,7 @@ async function select(id, center) {
 async function showProperties() {
   const info = $('#propsinfo'), pre = $('#propstext');
   const o = state.level && state.level.objects[state.selected];
-  if (!o) { info.textContent = 'No object selected.'; pre.textContent = ''; return; }
+  if (!o) { info.textContent = 'No object selected.'; pre.textContent = ''; $('#propsevents').innerHTML = ''; return; }
   info.innerHTML = '';
   const add = (k, v) => {
     const line = document.createElement('div');
@@ -590,6 +842,7 @@ async function showProperties() {
   add('Sequence', (o.seq || '(none)') + (sp && sp.seq && sp.seq.toLowerCase() !== (o.seq || '').toLowerCase() ? ` (shown: ${sp.seq})` : ''));
   add('Flags', [o.visible ? 'visible' : 'invisible', o.active ? 'active' : 'inactive', o.stationary ? 'stationary' : 'mobile'].join(', '));
   add('In', `${o.container} (lines ${o.first_line + 1}-${o.last_line + 1})`);
+  showEvents(o);
   pre.textContent = 'Loading...';
   try {
     pre.textContent = await api(`/api/object?path=${encodeURIComponent(state.path)}&id=${o.id}`, 'text');
@@ -697,7 +950,7 @@ function toggle(name) {
   state.toggles[name] = !state.toggles[name];
   store.set('toggles', state.toggles);
   syncToggles();
-  if (name === 'hidden') buildObjectList();
+  if (name === 'hidden' || name === 'events') buildObjectList();
   redraw();
 }
 
@@ -727,7 +980,15 @@ function hitTest(cx, cy) {
     const px = Math.floor(wx - (o.x - s.hx)), py = Math.floor(wy - (o.y - s.hy));
     if (px >= 0 && py >= 0 && px < s.w && py < s.h && s.alpha[py * s.w + px]) return o.id;
   }
-  return -1;
+  // trigger areas and polygons: the smallest one containing the point
+  let area = Infinity;
+  for (const o of L.objects) {
+    if (!objectVisible(o)) continue;
+    const shape = shapeOf(o);
+    if (!shape || !shape.contains(wx, wy)) continue;
+    if (shape.area < area) { area = shape.area; best = o.id; }
+  }
+  return best;
 }
 
 function drawLabel(ctx, o, x, y, r) {
@@ -796,6 +1057,11 @@ function setupInput() {
     if (row) select(Number(row.dataset.id), true);
   });
   $('#filter').addEventListener('input', (e) => { state.filter = e.target.value; buildObjectList(); });
+  $('#evfilter').addEventListener('input', buildEventList);
+  $('#evlist').addEventListener('click', (e) => {
+    const row = e.target.closest('.row');
+    if (row) select(Number(row.dataset.id), true);
+  });
 
   // menus: click to open, hover to switch while one is open
   for (const m of $$('.menu')) {
@@ -839,7 +1105,7 @@ function setupInput() {
       ArrowUp: () => { state.view.y -= step; redraw(); }, ArrowDown: () => { state.view.y += step; redraw(); },
       '+': commands.zoomin, '=': commands.zoomin, '-': commands.zoomout, f: fit, '1': commands.actual,
       g: () => toggle('grid'), l: () => toggle('labels'), i: () => toggle('hidden'), t: () => toggle('terrain'),
-      p: () => toggle('sprites'), m: () => toggle('markers'),
+      p: () => toggle('sprites'), m: () => toggle('markers'), e: () => toggle('events'),
       s: () => setTool('select'), h: () => setTool('hand'),
     };
     const a = actions[k] || actions[k.toLowerCase()];

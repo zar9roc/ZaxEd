@@ -127,9 +127,22 @@ def _flag(scal, key, default=True):
     return default if value is None else value.strip() == '1'
 
 
+def _polygon(value):
+    """'x, y, x, y, ...' -> [[x, y], ...] or None."""
+    try:
+        nums = [float(v) for v in value.split(',') if v.strip()]
+    except ValueError:
+        return None
+    if len(nums) < 6 or len(nums) % 2:
+        return None
+    return [[nums[i], nums[i + 1]] for i in range(0, len(nums), 2)]
+
+
 def objects(root):
-    """All positioned objects (entities): flat list with the essentials."""
-    result = []
+    """All objects: positioned entities and polygon level parts
+    (CFreeRangePoly: trigger areas, blockers...), flat, with their events."""
+    from . import events          # events imports Node from here
+    found = []
     parents = {}
     for node in root.walk():
         for _, v in node.props:
@@ -137,22 +150,40 @@ def objects(root):
                 parents[id(v)] = node
     for node in root.walk():
         scal = node.scalars()
-        if 'Position X' not in scal or 'Position Y' not in scal:
-            continue
-        try:
-            x = float(scal['Position X'])
-            y = float(scal['Position Y'])
-        except ValueError:
-            continue
-        model = scal.get('Model', '')
         parent = parents.get(id(node))
-        result.append({
+        polygon = None
+        if 'Position X' in scal and 'Position Y' in scal:
+            try:
+                x = float(scal['Position X'])
+                y = float(scal['Position Y'])
+            except ValueError:
+                continue
+        elif 'Polygon' in scal and parent is not None and node.key == 'Level Part':
+            polygon = _polygon(scal['Polygon'])
+            if not polygon:
+                continue
+            x = sum(p[0] for p in polygon) / len(polygon)
+            y = sum(p[1] for p in polygon) / len(polygon)
+        else:
+            continue
+        found.append((node, scal, parent, x, y, polygon))
+
+    names = {scal.get('Name', '') for _, scal, _, _, _, _ in found} - {''}
+    result = []
+    for node, scal, parent, x, y, polygon in found:
+        model = scal.get('Model', '')
+        evs = events.event_tree(node, names)
+        if polygon:
+            category = 'Trigger areas' if any('trigger' in e for e in evs) else 'Polygons'
+        else:
+            category = model.split('/', 1)[0] if model else '(none)'
+        obj = {
             'id': len(result),
             'cls': node.cls,
             'name': scal.get('Name', ''),
             'model': model,
             'seq': scal.get('Cur Sequence', ''),
-            'category': model.split('/', 1)[0] if model else '(none)',
+            'category': category,
             'x': x,
             'y': y,
             'visible': _flag(scal, 'Visible'),
@@ -161,7 +192,11 @@ def objects(root):
             'container': parent.key if parent else '',
             'first_line': node.first_line,
             'last_line': node.last_line,
-        })
+            'events': evs,
+        }
+        if polygon:
+            obj['polygon'] = polygon
+        result.append(obj)
     return result
 
 
