@@ -18,6 +18,8 @@ RLE, per row until the row is `width` pixels long, control byte c:
   c & 0x80   skip c & 0x7f pixels (transparent)
   c & 0x40   c & 0x3f literal RGB565 pixels follow
   else       the next RGB565 pixel repeated c & 0x3f times
+Each model also has one collision outline (see collision()).
+
 After the image: a row offset table (u32 per row, relative to +36), then a
 mask and a second image (not used here; "... Shadow" sequences keep their
 shadow there, their colour image is empty).
@@ -144,6 +146,19 @@ def sprite(data, wanted=''):
             return None
     name, _, frame = seqs[key]
     return name, frame
+
+
+def collision(data):
+    """The model's collision outline: 'POLY2D\\0', a type byte (7), u32 point
+    count, then x, y float pairs relative to the object's position (closed:
+    the last point repeats the first). [] if the model has none."""
+    i = data.find(b'POLY2D\x00')
+    if i < 0 or i + 12 > len(data):
+        return []
+    n = struct.unpack_from('<I', data, i + 8)[0]
+    if n > 1000 or i + 12 + 8 * n > len(data):
+        return []
+    return [list(struct.unpack_from('<ff', data, i + 12 + 8 * k)) for k in range(n)]
 
 
 def png(width, height, rgba):

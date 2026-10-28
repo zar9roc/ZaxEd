@@ -24,7 +24,7 @@ const state = {
   textures: [],            // per terrain texture: {w, h, rgba} or null if missing
   view: { x: 0, y: 0, zoom: 1 },
   tool: 'select',
-  toggles: { grid: false, labels: false, hidden: false, terrain: true, sprites: true, markers: false, events: true },
+  toggles: { grid: false, labels: false, hidden: false, terrain: true, sprites: true, markers: false, events: true, collision: false },
   byName: new Map(),       // object name -> [ids]
   incoming: new Map(),     // object name -> [{id, label, cls}] events elsewhere referring to it
   sprites: new Map(),      // "model|seq" -> {img, hx, hy, w, h, alpha} | null (none) | 'loading'
@@ -384,6 +384,39 @@ function showEvents(o) {
   renderIncoming(box, o);
 }
 
+// ---------------------------------------------------------------- collision
+
+// Collision outline of an object in world coordinates, or null: blocker
+// polygons (not trigger areas), and model outlines (POLY2D) of collideable
+// objects, placed at their position.
+function collisionOf(o) {
+  if (!o.collideable) return null;
+  if (o.polygon) return o.category === 'Polygons' ? o.polygon : null;
+  if (!o.collision) return null;
+  return o.collision.map(([x, y]) => [o.x + x, o.y + y]);
+}
+
+// Collision mask layer: red = full height (blocks everything), orange = half
+// height (low obstacles); dashed = inactive (events can switch it on).
+function drawCollision(ctx, sx, sy) {
+  for (const o of state.level.objects) {
+    if (state.layers[o.category] === false && o.category !== 'Polygons') continue;
+    const pts = collisionOf(o);
+    if (!pts || pts.length < 3) continue;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(sx(x), sy(y)) : ctx.moveTo(sx(x), sy(y))));
+    ctx.closePath();
+    const [r, g, b] = o.half_height && !o.full_height ? [255, 150, 30] : [255, 40, 40];
+    ctx.fillStyle = `rgba(${r},${g},${b},${o.active ? 0.35 : 0.12})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash(o.active ? [] : [4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
 // ---------------------------------------------------------------- terrain
 
 // Elevation (0..255) at a world position: bilinear between the grid corners.
@@ -585,6 +618,7 @@ function draw() {
     }
   }
 
+  if (state.toggles.collision) drawCollision(ctx, sx, sy);
   drawEvents(ctx, sx, sy, z);
 
   // markers: always without sprites; with sprites only when asked for, or
@@ -1105,6 +1139,7 @@ function setupInput() {
       '+': commands.zoomin, '=': commands.zoomin, '-': commands.zoomout, f: fit, '1': commands.actual,
       g: () => toggle('grid'), l: () => toggle('labels'), i: () => toggle('hidden'), t: () => toggle('terrain'),
       p: () => toggle('sprites'), m: () => toggle('markers'), e: () => toggle('events'),
+      c: () => toggle('collision'),
       s: () => setTool('select'), h: () => setTool('hand'),
     };
     const a = actions[k] || actions[k.toLowerCase()];
@@ -1116,6 +1151,8 @@ function setupInput() {
 // ---------------------------------------------------------------- start
 
 state.toggles = Object.assign(state.toggles, store.get('toggles', {}));
+for (const t of (new URLSearchParams(location.search).get('on') || '').split(',')) // on=collision,grid
+  if (t in state.toggles) state.toggles[t] = true;
 setupInput();
 syncToggles();
 setTool('select');

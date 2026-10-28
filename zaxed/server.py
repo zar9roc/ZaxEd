@@ -34,18 +34,33 @@ FRM16_HEADER = 36     # .frm16: 36-byte header, w*h RGB565, then 512 trailing by
 
 
 class LevelCache:
-    """Parsed levels, so object text can be served without reparsing."""
+    """Parsed levels, so object text can be served without reparsing. Objects
+    get their model's collision outline ("collision", relative points)."""
 
     def __init__(self, archive):
         self.archive = archive
         self._lock = threading.Lock()
         self._levels = {}
+        self._outlines = {}      # model (lower) -> points
+
+    def _outline(self, model_name):
+        key = model_name.lower()
+        if key not in self._outlines:
+            path = f'Cache/Models/{model_name}.mdl16'
+            self._outlines[key] = model.collision(self.archive.read(path)) if self.archive.exists(path) else []
+        return self._outlines[key]
 
     def get(self, path):
         with self._lock:
             if path not in self._levels:
                 text = self.archive.read(path).decode('latin1')
-                self._levels = {path: zaxfile.level_summary(text)}     # keep only the latest
+                summary, lines, nodes = zaxfile.level_summary(text)
+                for obj in summary['objects']:
+                    if obj['model']:
+                        outline = self._outline(obj['model'])
+                        if outline:
+                            obj['collision'] = outline
+                self._levels = {path: (summary, lines, nodes)}     # keep only the latest
             return self._levels[path]
 
 

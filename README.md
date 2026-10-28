@@ -15,7 +15,8 @@ Needs only Python 3 (standard library) and a web browser. The server listens on
 
 Deep links: `http://127.0.0.1:8642/?map=Levels/ACT%201/M1M2/01%20Main.zax&view=2010,1884,1&select=fruit%20relay`
 opens a map centred on x, y at a zoom (1 = 100%) and selects an object by name;
-add `&props=1` to open its properties window.
+add `&props=1` to open its properties window, `&on=collision,grid` to switch
+view toggles on for that page load.
 
 ## Using it
 
@@ -26,7 +27,7 @@ add `&props=1` to open its properties window.
 | Zoom | Mouse wheel (around the cursor), + / -, F to fit, 1 for 100% |
 | Inspect an object | Select tool (S): click a marker, or click it in the Objects list (centres the view) |
 | Layers | Objects tab: tick categories on/off; filter by name or model |
-| Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites, E events |
+| Toggles | G tile grid, L object names, I invisible objects, T terrain, P object sprites, M markers on top of sprites, E events, C collision mask |
 | Events | Events tab lists every object with triggers/relays/actions; select one to see its outline and "referenced by" in Properties (names are links) and arrows on the map |
 | Properties window | Double-click an object (map, Objects or Events list): tabs General (grouped: identity with sprite preview, placement, state flags, gameplay, other), Events, Links, All properties (tree), Source. Several can be open; drag by the title, resize from the corner |
 | Other maps, dialogue | In event outlines, purple links open another map with the target object selected; speech-bubble links show the dialogue line and play its voice. "Entered from other maps" (Properties, Map tab) lists events elsewhere leading here |
@@ -110,6 +111,14 @@ a mission script (`.RDS`) line (voice: `VOs/<line>.ogg` next to the script).
 Name` (= `Levels/<name>.zax`, any case) at the object named `New Location`
 there; `COtherMapAction` (`Other Map Name`) runs its nested actions in that
 other map, so names inside it refer to objects there.
+
+**Collision**: every model has one outline: `POLY2D\0`, a type byte (7), a
+u32 point count, then x, y floats relative to the object's position (closed,
+last point = first; count 0 = no collision). Objects with `Collideable=1`
+block with that outline; `Full Height=1` blocks everything, `Half Height=1`
+are low obstacles. `CFreeRangePoly` parts with `Collideable=1` and no trigger
+are invisible blockers. The Collision mask view (C) draws these: red full
+height, orange half height, dashed if the object starts inactive.
 
 **Object sprites**: `Cache/Models/<Model>.mdl16`, a binary serialisation of
 the model object (length-prefixed strings, floats, nested objects). Its
