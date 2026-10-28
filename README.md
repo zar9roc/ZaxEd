@@ -117,7 +117,14 @@ Action for each spawn); a pad's power source has `Destroyed Action =
 CSendMessageAction(Message=turn gen off, Target=<pad name>)`, which stops the
 generator ("turn gen on" restarts one).
 Object names in events are matched ignoring case, as the game does (the
-pedestal next to the "Mega 6" pickup runs `CDeleteAction(Target Name=mega 6)`).
+pedestal next to the "Mega 6" pickup runs `CDeleteAction(Target Name=mega 6)`),
+and a value can list several (`Door Name=Spike Gate,Spike Final`, `Relay
+Name=a relay, another`). **Series** (`CSeriesAction`) run one step per
+activation, not all at once: `Next Action Index` remembers the position and
+`When Done` says what follows the last step (Do Nothing, Repeat Last Action,
+Repeat Series, Restart from beginning). An empty first step (283 of the 455
+series) makes a counter: e.g. WaterTempleMain's "end relay" is fired by two
+one-shot switches and opens the spike gates and Big Secret only on the second.
 **Items**: a pickup model's `CPickupAI` names the inventory item it gives (an
 `Inventory/Item Definitions/<def>.txt`; weapon parts add a segment such as
 `MegaFusionDisruptor/fusionbarrell1part`). Events refer to items by

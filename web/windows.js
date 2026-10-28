@@ -160,7 +160,8 @@ function renderEvents(box, o) {
       line.style.marginLeft = 10 + depth * 14 + 'px';
       if (depth) line.append(el('span', 'evkey', n.key + ': '));
       line.append(document.createTextNode(n.label));
-      const add = (node) => { line.append(document.createTextNode(' → ')); line.append(node); };
+      let first = true;     // several targets: '→ a, b'
+      const add = (node) => { line.append(document.createTextNode(first ? ' → ' : ', ')); line.append(node); first = false; };
       for (const ref of n.refs) add(refLink(ref));
       if (n.map) add(mapLink(n.map.name, n.map.location));
       for (const r of n.remote || []) add(mapLink(r.map, r.name));

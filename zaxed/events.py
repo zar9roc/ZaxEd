@@ -103,7 +103,9 @@ def _items(node):
             continue
         segs = n.get('Segments')
         segments = [v for k, v in segs.props if k == 'Segment' and isinstance(v, str)] if isinstance(segs, Node) else []
-        out.append({'def': d, 'segments': segments})
+        for one in d.split(','):                   # can list several ('Key, Stone')
+            if one.strip():
+                out.append({'def': one.strip(), 'segments': segments})
     return out
 
 
@@ -155,7 +157,9 @@ def _label(node):
     if c == 'CMultipleActionsAction':
         return 'Do all of'
     if c == 'CSeriesAction':
-        return 'Do in order' + (f" (then {s['When Done']})" if s.get('When Done') not in (None, '', 'Do Nothing') else '')
+        # one step per run, position kept in Next Action Index (not all at once)
+        after = SERIES_WHEN_DONE.get(s.get('When Done', ''), s.get('When Done', ''))
+        return 'Each run does the next step' + (f'; after the last, {after}' if after else '')
     if c == 'CConditionalAction':
         return 'If'
     # generic: class name and its interesting values
@@ -163,16 +167,28 @@ def _label(node):
     return _short(c) + (': ' + ', '.join(vals[:4]) if vals else '')
 
 
+SERIES_WHEN_DONE = {
+    'Do Nothing': 'nothing more',
+    'Repeat Last Action': 'repeat the last step',
+    'Repeat Series': 'start over',
+    'Restart from beginning': 'start over',
+}
+
+
 def _refs(node, names):
-    """Object names this node itself refers to (not its children). With a
-    New Map Name, New Location names an object in that map, not this one."""
-    skip = {'Name'}
+    """Object names this node itself refers to (not its children). Values can
+    list several names ('Door Name=Spike Gate,Spike Final'). With a New Map
+    Name, New Location names an object in that map, not this one."""
+    skip = {'Name', *ITEM_KEYS, *MODEL_KEYS}       # item and model names aren't objects
     if node.get('New Map Name'):
         skip.add('New Location')
     found = []
     for k, v in node.props:
-        if isinstance(v, str) and v.lower() in names and k not in skip and v not in found:
-            found.append(v)
+        if not isinstance(v, str) or k in skip:
+            continue
+        for part in [v] + ([p.strip() for p in v.split(',')] if ',' in v and v.lower() not in names else []):
+            if part.lower() in names and part not in found:
+                found.append(part)
     return found
 
 
@@ -216,7 +232,18 @@ def _action(node, key, names, depth=0, other_map=None):
         if not isinstance(v, Node) or not v.cls:
             continue
         if v.cls == 'Array':                        # list of actions / AIs
+            step = 0
             for ik, iv in v.props:
+                if node.cls == 'CSeriesAction' and ik == 'Action':
+                    step += 1
+                    if not isinstance(iv, Node) or not iv.cls:     # empty step: a run that does nothing
+                        entry['children'].append({'label': '(nothing)', 'cls': '', 'key': f'Step {step}',
+                                                  'refs': [], 'children': []})
+                        continue
+                    child = _action(iv, f'Step {step}', names, depth + 1, other_map)
+                    if child:
+                        entry['children'].append(child)
+                    continue
                 if isinstance(iv, Node) and iv.cls:
                     child = _action(iv, k, names, depth + 1, other_map)
                     if child:
