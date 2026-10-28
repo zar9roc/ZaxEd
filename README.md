@@ -107,6 +107,13 @@ nest (`CMultipleActionsAction`, `CSeriesAction`, `CConditionalAction` with
 `Try/Succeed/Fail Action`, `CDelayAction`...) and refer to objects by name
 (`Target Name`, `Relay Name`, `New Location`...); `CZaxDialogAction` refers to
 a mission script (`.RDS`) line (voice: `VOs/<line>.ogg` next to the script).
+Objects can also carry actions of their own: `Destroyed Action` (750 in the
+game), `Damaged Action`, `Collided While Rotating Action`; ZaxEd lists them as
+"When destroyed" etc. (skull icon). Spawn pads are `CGeneratorAI` (Things to
+Generate: weighted models, Max Simultaneous, Delay Between Spawns, After
+Action for each spawn); a pad's power source has `Destroyed Action =
+CSendMessageAction(Message=turn gen off, Target=<pad name>)`, which stops the
+generator ("turn gen on" restarts one).
 `CSwitchMapAction`, `CTeleportAction` and `CRelocateAction` go to `New Map
 Name` (= `Levels/<name>.zax`, any case) at the object named `New Location`
 there; `COtherMapAction` (`Other Map Name`) runs its nested actions in that

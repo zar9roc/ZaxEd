@@ -189,7 +189,8 @@ function drawsSprite(o) {
 
 const EVENT_ICONS = {
   CTouchingPolygonTriggerAI: '⚡', CTouchingOvalTriggerAI: '⚡', CPassThroughTriggerAI: '⚡',
-  CollideTriggerAI: '⚡', CRelayAI: '↻', CSpawnPointAI: '✱',
+  CollideTriggerAI: '⚡', CRelayAI: '↻', CSpawnPointAI: '✱', CGeneratorAI: '⭗',
+  'Destroyed Action': '☠', 'Damaged Action': '☠',
 };
 
 function walkEvent(e, fn, depth = 0) {
@@ -293,7 +294,8 @@ function drawEvents(ctx, sx, sy, z) {
   }
 }
 
-function linkColor(cls) {
+function linkColor(cls, label) {
+  if (cls === 'CSendMessageAction') return / on'/i.test(label || '') ? '#40ff60' : / off'/i.test(label || '') ? '#ff5050' : '#ff70d0';
   if (cls === 'CActivateAction' || cls === 'COpenDoorAction') return '#40ff60';
   if (cls === 'CDeactivateAction' || cls === 'CDeleteAction' || cls === 'CDestroyAction' || cls === 'CCloseDoorAction') return '#ff5050';
   if (cls === 'CTriggerRelayAction') return '#ffa030';
@@ -323,10 +325,10 @@ function drawLinks(ctx, sel, sx, sy) {
     walkEvent(e, (n) => {
       for (const ref of n.refs)
         for (const id of state.byName.get(ref) || [])
-          if (id !== sel.id) arrow(ctx, sx(sel.x), sy(sel.y), sx(L.objects[id].x), sy(L.objects[id].y), linkColor(n.cls), false);
+          if (id !== sel.id) arrow(ctx, sx(sel.x), sy(sel.y), sx(L.objects[id].x), sy(L.objects[id].y), linkColor(n.cls, n.label), false);
     });
   for (const inc of (sel.name && state.incoming.get(sel.name)) || [])
-    if (inc.id !== sel.id) arrow(ctx, sx(L.objects[inc.id].x), sy(L.objects[inc.id].y), sx(sel.x), sy(sel.y), linkColor(inc.cls), true);
+    if (inc.id !== sel.id) arrow(ctx, sx(L.objects[inc.id].x), sy(L.objects[inc.id].y), sx(sel.x), sy(sel.y), linkColor(inc.cls, inc.label), true);
 }
 
 function objectTitle(o) {

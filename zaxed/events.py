@@ -1,6 +1,9 @@
 """Readable summaries of a level's scripting ("events").
 
-Objects carry an `Activity` array of AI components. Triggers
+Objects carry an `Activity` array of AI components, and can have actions of
+their own: `Destroyed Action` (750 objects in the game, e.g. a spawn pad's
+power source sends the message "turn gen off" to the pad's CGeneratorAI),
+`Damaged Action`, `Collided While Rotating Action`. Triggers
 (CTouchingPolygonTriggerAI on a CFreeRangePoly, CTouchingOvalTriggerAI with
 X Radius / YX Ratio, CPassThroughTriggerAI, CollideTriggerAI) run Enter /
 Exit / Repeat actions; CRelayAI listens for CTriggerRelayAction(Relay Name =
@@ -62,9 +65,30 @@ def _who(s):
     return ', '.join(who) or 'nobody'
 
 
+def _generated_models(node):
+    things = node.get('Things to Generate')
+    if not isinstance(things, Node):
+        return []
+    out = []
+    for _, t in things.props:
+        if isinstance(t, Node) and t.scalars().get('Model'):
+            out.append(t.scalars()['Model'].split('/')[-1])
+    return out
+
+
 def _label(node):
     """One-line description of an action or AI node."""
     c, s = node.cls, node.scalars()
+    if c == 'CSendMessageAction':
+        return f"Send '{s.get('Message', '')}' to '{s.get('Target', '')}'"
+    if c == 'CGeneratorAI':
+        models = ', '.join(_generated_models(node)) or 'nothing'
+        extra = []
+        if s.get('Max Simultaneous'):
+            extra.append(f"max {s['Max Simultaneous']} at once")
+        if s.get('Delay Between Spawns'):
+            extra.append(f"every {s['Delay Between Spawns']} s")
+        return f"Spawner: {models}" + (f" ({', '.join(extra)})" if extra else '')
     if c in TRIGGER_KINDS:
         text = f"{TRIGGER_KINDS[c]}, by {_who(s)}"
         if s.get('Trigger Only Once') == '1':
@@ -165,15 +189,30 @@ def _has_events(entry):
     return any(_has_events(c) for c in entry['children'])
 
 
+OBJECT_ACTION_LABELS = {
+    'Destroyed Action': 'When destroyed',
+    'Damaged Action': 'When damaged',
+    'Hit Action': 'When hit',
+    'Collided While Rotating Action': 'When it collides while rotating',
+}
+
+
 def event_tree(obj_node, names):
-    """Event trees of one object's activities (only those that do something)."""
-    activity = obj_node.get('Activity')
-    if not isinstance(activity, Node):
-        return []
+    """Event trees of one object: its activities and its own actions
+    (Destroyed Action...), only those that do something."""
     out = []
-    for key, ai in activity.props:
-        if isinstance(ai, Node) and ai.cls:
-            entry = _action(ai, key, names)
-            if entry and _has_events(entry):
-                out.append(entry)
+    activity = obj_node.get('Activity')
+    if isinstance(activity, Node):
+        for key, ai in activity.props:
+            if isinstance(ai, Node) and ai.cls:
+                entry = _action(ai, key, names)
+                if entry and _has_events(entry):
+                    out.append(entry)
+    for key, value in obj_node.props:
+        if key == 'Activity' or not isinstance(value, Node) or 'Action' not in value.cls:
+            continue
+        action = _action(value, key, names)
+        if action and _has_events(action):
+            label = OBJECT_ACTION_LABELS.get(key) or 'On ' + key.replace(' Action', '').lower()
+            out.append({'label': label, 'cls': key, 'key': key, 'refs': [], 'children': [action]})
     return out
